@@ -1,4 +1,5 @@
 import SkeletonCard from '../../components/common/SkeletonCard';
+import CaseStepper from '../../components/common/CaseStepper';
 import { useState, useEffect } from 'react';
 import { FolderOpen, Video, FileText, TrendingUp, Clock, Bot, MessageCircle, MessageSquare, Loader2, Scale, AlertCircle, Eye } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -424,6 +425,7 @@ export default function LitigantDashboard() {
                                     <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
                                         {t('litigant.filed')}: {caseItem.date}
                                     </p>
+                                    <CaseStepper currentStatus={caseItem.status} compact={true} />
                                 </div>
                             ))
                         )}

@@ -256,6 +256,9 @@ public class CaseManagementService {
                 .respondentPhone(entity.getRespondentPhone())
                 .respondentAddress(entity.getRespondentAddress())
                 .respondentIdentified(entity.getRespondentIdentified())
+                // Stepper fields
+                .currentJudicialStage(entity.getCurrentJudicialStage())
+                .assignedLawyer(entity.getLawyer() != null)
                 .build();
     }
 

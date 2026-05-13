@@ -14,6 +14,7 @@ import { caseAPI, documentAPI, brainAPI, caseAssignmentAPI } from '../../service
 import { motion, AnimatePresence } from 'framer-motion';
 import { API_BASE_URL } from '../../config/apiConfig';
 import CaseChatWidget from '../../components/CaseChatWidget';
+import CaseStepper from '../../components/common/CaseStepper';
 
 // -----------------------------------------------------------------------------
 // HELPER CONSTANTS & FUNCTIONS
@@ -273,7 +274,7 @@ export default function CaseDetailPage() {
             {/* 3. Tab Content */}
 
             {/* OVERVIEW TAB */}
-            {activeTab === 'overview' && <OverviewTab caseData={caseData} onHireLawyer={handleHireLawyer} />}
+            {activeTab === 'overview' && <OverviewTab caseData={caseData} onHireLawyer={handleHireLawyer} CaseStepper={CaseStepper} />}
 
             {/* CASE FILES TAB */}
             {activeTab === 'files' && <CaseFilesTab caseId={caseId} caseType={caseData.caseType} caseDescription={caseData.description} />}
@@ -399,9 +400,13 @@ export default function CaseDetailPage() {
 // SUB-COMPONENTS (TABS)
 // -----------------------------------------------------------------------------
 
-function OverviewTab({ caseData, onHireLawyer }) {
+function OverviewTab({ caseData, onHireLawyer, CaseStepper }) {
     return (
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '2rem' }}>
+        <div>
+            {/* 7-Stage Judicial Workflow Stepper */}
+            {CaseStepper && <CaseStepper currentStatus={caseData.status} judicialStage={caseData.currentJudicialStage} />}
+
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '2rem' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
                 {/* Description */}
                 <div style={{ background: 'var(--bg-glass-strong)', padding: '2rem', borderRadius: '1.5rem', border: 'var(--border-glass-strong)' }}>
@@ -664,6 +669,7 @@ function OverviewTab({ caseData, onHireLawyer }) {
                 </div>
             </div>
         </div >
+        </div>
     );
 }
 

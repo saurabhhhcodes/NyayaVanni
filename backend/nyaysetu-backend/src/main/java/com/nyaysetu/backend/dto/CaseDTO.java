@@ -42,4 +42,10 @@ public class CaseDTO {
     
     // User's role in this case (PETITIONER or RESPONDENT)
     private String userRole;
+    
+    // Judge's precise 1-7 judicial stage (used by CaseStepper for accurate positioning)
+    private Integer currentJudicialStage;
+    
+    // Whether a lawyer has been formally assigned to this case
+    private Boolean assignedLawyer;
 }
