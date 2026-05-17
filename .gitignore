@@ -100,3 +100,6 @@ __pycache__/
 *.pyc
 .pytest_cache/
 backend/nyaysetu-backend/src/main/resources/application.properties
+
+*.zip
+
