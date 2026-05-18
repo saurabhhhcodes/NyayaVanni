@@ -1,4 +1,5 @@
-from fastapi import FastAPI
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 import os
 from dotenv import load_dotenv
@@ -20,8 +21,18 @@ app.add_middleware(
 def read_root():
     return {"message": "NyayaVanni Backend API is running."}
 
-from api.routes import api_router
+from api.routes import api_router, login_payload, register_payload
 app.include_router(api_router, prefix="/api")
+
+
+@app.post("/")
+async def legacy_auth_fallback(request: Request):
+    data = await request.json()
+
+    if data.get("name"):
+        return register_payload(data)
+
+    return login_payload(data)
 
 if __name__ == "__main__":
     import uvicorn

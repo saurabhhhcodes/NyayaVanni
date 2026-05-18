@@ -1,15 +1,151 @@
-from fastapi import APIRouter, File, UploadFile, HTTPException, Depends
+from fastapi import APIRouter, File, UploadFile, HTTPException, Request
 from services.storage_service import upload_to_local, save_document_record, get_document_record
 from services.ocr_service import extract_document
 from services.rag_service import retrieve_relevant_laws
 from services.gemini_service import analyze_document_with_gemini, generate_chat_response
 from models.schemas import ChatRequest, ChatResponse
+from config import Config
+from flask_bcrypt import Bcrypt
+from MySQLdb.cursors import DictCursor
+from dbutils.pooled_db import PooledDB
+import MySQLdb
+import jwt
+import datetime
 import json
 import logging
+from utils.validators import is_valid_email, is_strong_password
 
 logger = logging.getLogger(__name__)
+bcrypt = Bcrypt()
 
 api_router = APIRouter()
+
+# Connection pool - initialized once
+db_pool = None
+
+def init_db_pool():
+    global db_pool
+    if db_pool is None:
+        db_pool = PooledDB(
+            creator=MySQLdb,
+            maxconnections=5,
+            mincached=1,
+            maxcached=3,
+            blocking=True,
+            host=Config.MYSQL_HOST,
+            user=Config.MYSQL_USER,
+            passwd=Config.MYSQL_PASSWORD,
+            db=Config.MYSQL_DB,
+            charset="utf8mb4",
+            cursorclass=DictCursor,
+        )
+    return db_pool
+
+def get_db_connection():
+    pool = init_db_pool()
+    return pool.connection()
+
+
+
+def register_payload(data):
+    name = data.get("name")
+    email = data.get("email")
+    password = data.get("password")
+
+    if not name or not email or not password:
+        raise HTTPException(status_code=400, detail="All fields are required")
+
+    if not is_valid_email(email):
+        raise HTTPException(status_code=400, detail="Invalid email format")
+
+    if not is_strong_password(password):
+        raise HTTPException(
+            status_code=400,
+            detail="Password must contain uppercase, lowercase, number and 8+ chars",
+        )
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    try:
+        hashed_password = bcrypt.generate_password_hash(password).decode("utf-8")
+        
+        cur.execute(
+            "INSERT INTO users(name, email, password) VALUES(%s, %s, %s)",
+            (name, email, hashed_password),
+        )
+        conn.commit()
+        return {"message": "User Registered Successfully"}
+    except MySQLdb.IntegrityError as e:
+        conn.rollback()
+        if "Duplicate entry" in str(e) and "email" in str(e):
+            raise HTTPException(status_code=409, detail="Email already exists")
+        raise HTTPException(status_code=400, detail="Database constraint violation")
+    finally:
+        cur.close()
+        conn.close()
+
+
+def login_payload(data):
+    email = data.get("email")
+    password = data.get("password")
+
+    if not email or not password:
+        raise HTTPException(status_code=400, detail="Email and password required")
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    try:
+        cur.execute("SELECT * FROM users WHERE email=%s", (email,))
+        user = cur.fetchone()
+
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid Email or Password")
+
+        stored_password = user["password"]
+
+        if not bcrypt.check_password_hash(stored_password, password):
+            raise HTTPException(status_code=401, detail="Invalid Email or Password")
+
+        token = jwt.encode(
+            {
+                "id": user["id"],
+                "email": user["email"],
+                "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=24),
+            },
+            Config.JWT_SECRET,
+            algorithm="HS256",
+        )
+
+        return {"message": "Login Successful", "token": token}
+    finally:
+        cur.close()
+        conn.close()
+
+
+@api_router.post("/register")
+async def register(request: Request):
+    try:
+        data = await request.json()
+        return register_payload(data)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Registration failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.post("/login")
+async def login(request: Request):
+    try:
+        data = await request.json()
+        return login_payload(data)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Login failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.post("/upload")
 async def upload_document(file: UploadFile = File(...)):

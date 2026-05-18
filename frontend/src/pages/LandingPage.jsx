@@ -5,6 +5,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 
 export default function LandingPage() {
   const { t } = useLanguage();
+  const isSignedIn = Boolean(localStorage.getItem('authToken'));
   const [dragActive, setDragActive] = useState(false);
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -95,9 +96,14 @@ export default function LandingPage() {
           >
             {t("nav.hire")}
           </button>
-          <button className="bg-white/10 hover:bg-white/20 text-white px-5 py-2 rounded-full font-medium transition-colors border border-white/10 backdrop-blur-md">
-            {t("nav.signin")}
-          </button>
+          {!isSignedIn && (
+            <button 
+              onClick={() => navigate('/signIn')}
+              className="bg-white/10 hover:bg-white/20 text-white px-5 py-2 rounded-full font-medium transition-colors border border-white/10 backdrop-blur-md"
+            >
+              {t("nav.signin")}
+            </button>
+          )}
         </div>
       </nav>
 
