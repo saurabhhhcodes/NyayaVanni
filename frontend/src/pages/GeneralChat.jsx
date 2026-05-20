@@ -36,7 +36,6 @@ export default function GeneralChat() {
         body: JSON.stringify({
           user_message: userMsg.message,
           chat_history: currentHistory,
-          document_analysis: {}, // Empty for general chat
           language: language
         })
       });

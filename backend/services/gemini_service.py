@@ -3,7 +3,7 @@ import os
 import json
 import logging
 import re
-# Import the custom Legal Query Optimizer you just created
+# Import the custom Legal Query Optimizer
 from services.legal_processor import LegalQueryOptimizer
 
 logger = logging.getLogger(__name__)
@@ -99,8 +99,11 @@ def generate_chat_response(document_analysis: dict, chat_history: list, user_mes
     """
     Generate a conversational response using the Gemini chat model.
     """
+    # Use the LegalQueryOptimizer here to preprocess and expand conversational query shortforms
+    optimized_message = query_optimizer.optimize_prompt(user_message)
+    
     history_str = "\n".join([f"{msg['role'].capitalize()}: {msg['message']}" for msg in chat_history])
-
+    
     if document_analysis:
         context_prompt = f"You are helping a user understand their legal document ({document_analysis.get('document_type', 'Document')}).\nPrevious analysis: {json.dumps(document_analysis)}"
     else:
@@ -117,8 +120,8 @@ def generate_chat_response(document_analysis: dict, chat_history: list, user_mes
     CONVERSATION HISTORY:
     {history_str}
 
-    USER QUESTION:
-    {user_message}
+    USER QUESTION (OPTIMIZED):
+    {optimized_message}
 
     Provide a helpful, accurate answer in simple, jargon-free language.
     If legal consultation is needed, recommend it clearly.

@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
-  Star,
   MapPin,
   Briefcase,
   Calendar,
@@ -51,7 +50,7 @@ export default function HireLawyer() {
     }
   }, []);
 
-  // Mock Data for Lawyers
+  // Mock Data for Lawyers (BCI Compliant - No Ratings)
   const mockLawyers = useMemo(
     () => [
       {
@@ -59,7 +58,6 @@ export default function HireLawyer() {
         name: "Adv. Rahul Sharma",
         specialty: "Real Estate & Property",
         experience: "15 Years",
-        rating: 4.8,
         location: "New Delhi, Delhi",
         fee: "₹2,000/Consultation",
         image:
@@ -70,7 +68,6 @@ export default function HireLawyer() {
         name: "Adv. Priya Desai",
         specialty: "Family Law & Divorce",
         experience: "12 Years",
-        rating: 4.9,
         location: "Mumbai, Maharashtra",
         fee: "₹2,500/Consultation",
         image:
@@ -81,7 +78,6 @@ export default function HireLawyer() {
         name: "Adv. Vikram Singh",
         specialty: "Corporate & Business",
         experience: "20 Years",
-        rating: 4.7,
         location: "Bengaluru, Karnataka",
         fee: "₹5,000/Consultation",
         image:
@@ -92,7 +88,6 @@ export default function HireLawyer() {
         name: "Adv. Neha Gupta",
         specialty: "Criminal Defense",
         experience: "8 Years",
-        rating: 4.6,
         location: "Pune, Maharashtra",
         fee: "₹1,500/Consultation",
         image:
@@ -103,7 +98,6 @@ export default function HireLawyer() {
         name: "Adv. Anil Kumar",
         specialty: "Civil Litigation",
         experience: "18 Years",
-        rating: 4.8,
         location: "Chennai, Tamil Nadu",
         fee: "₹3,000/Consultation",
         image:
@@ -114,7 +108,6 @@ export default function HireLawyer() {
         name: "Adv. Meera Reddy",
         specialty: "Intellectual Property",
         experience: "10 Years",
-        rating: 4.9,
         location: "Hyderabad, Telangana",
         fee: "₹4,000/Consultation",
         image:
@@ -279,7 +272,7 @@ export default function HireLawyer() {
           </p>
         </div>
 
-        {/* Active Consultations (premium) */}
+        {/* Active Consultations */}
         {activeBookings.length > 0 && (
           <div className="mt-10 mb-10 rounded-[2rem] border border-white/10 bg-slate-900/60 backdrop-blur-xl p-6 shadow-[0_0_40px_rgba(0,0,0,0.25)]">
             <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-5">
@@ -446,12 +439,6 @@ export default function HireLawyer() {
                       {lawyer.name}
                     </h3>
                     <p className="text-sm font-medium text-nyaya-300/90">{lawyer.specialty}</p>
-
-                    <div className="mt-2 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10">
-                      <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
-                      <span className="text-sm font-semibold text-slate-100">{lawyer.rating}</span>
-                      <span className="text-xs text-slate-400">/ 5.0</span>
-                    </div>
                   </div>
                 </div>
 
@@ -477,7 +464,8 @@ export default function HireLawyer() {
                              bg-gradient-to-r from-nyaya-500 to-blue-600
                              shadow-[0_0_25px_rgba(37,99,235,0.22)]
                              transition-all duration-300
-                             hover:scale-[1.02] active:scale-[0.99]"
+                             hover:scale-[1.02] active:scale-[0.99]
+                             flex items-center justify-center gap-2"
                 >
                   <span className="inline-flex items-center justify-center gap-2">
                     <Calendar className="w-4 h-4" /> {t("lawyers.book")}
