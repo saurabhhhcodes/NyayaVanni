@@ -555,7 +555,7 @@ export default function Constitution() {
                                                     background: bookmarks.find(b => b.number === selectedArticle.number) ? 'var(--color-primary)' : '#F1F5F9',
                                                     border: '1px solid #E2E8F0',
                                                     borderRadius: '0.75rem',
-                                                    color: 'white',
+                                                    color: bookmarks.find(b => b.number === selectedArticle.number) ? 'white' : 'var(--color-primary)',
                                                     cursor: 'pointer',
                                                     transition: 'all 0.3s'
                                                 }}
