@@ -1,6 +1,6 @@
 import os
 from services.knowledge_graph_service import LegalKnowledgeGraphBuilder
-from fastapi import APIRouter, File, UploadFile, HTTPException, Depends, Request
+from fastapi import APIRouter, File, UploadFile, HTTPException, Depends
 from services.storage_service import (
     upload_to_local,
     save_document_record,
@@ -9,8 +9,11 @@ from services.storage_service import (
     get_cached_analysis,
     create_session_id
     upload_to_local, save_document_record, get_document_record,
-    save_cached_analysis, get_cached_analysis, create_session_id,
-    delete_document_and_cache, UPLOAD_DIR
+  save_cached_analysis, get_cached_analysis,
+    create_session_id,
+    delete_document_and_cache,
+    UPLOAD_DIR
+ main
 )
 import uuid
 from services.ocr_service import extract_document
@@ -23,6 +26,16 @@ import logging
 logger = logging.getLogger(__name__)
 
 api_router = APIRouter()
+ feature/legal-knowledge-graph
+graph_builder = LegalKnowledgeGraphBuilder()
+@api_router.post("/upload")
+async def upload_document(file: UploadFile = File(...)):
+    """Upload document to S3 and return documentId"""
+    try:
+        contents = await file.read()
+        doc_id, local_path = upload_to_local(contents, file.filename)
+        # Assuming dummy user 'user_123' for MVP
+        save_document_record("user_123", doc_id, file.filename, local_path)
 
 graph_builder = LegalKnowledgeGraphBuilder()
 @api_router.get("/session")
@@ -112,6 +125,7 @@ async def upload_document(request: Request, file: UploadFile = File(...)):
             
         # 4. Save metadata record to SQLite
         save_document_record(session_id, doc_id, filename, local_path)
+
         return {"documentId": doc_id, "message": "Uploaded successfully"}
         
     except HTTPException as http_err:
@@ -268,11 +282,12 @@ async def analyze_document(
                 detail="The uploaded document is corrupted or could not be parsed."
             )
 
-
+ feature/legal-knowledge-graph
         raise HTTPException(
             status_code=500,
             detail="An internal processing error occurred."
         )
+
         raise HTTPException(status_code=500, detail="An internal processing error occurred.")
 
 
@@ -318,6 +333,9 @@ async def chat_with_document(document_id: str, request: ChatRequest):
         return ChatResponse(response=response_text)
     except Exception as e:
         logger.error(f"Chat failed for document {document_id}: {e}")
+ feature/legal-knowledge-graph
+        raise HTTPException(status_code=500, detail="Chat generation failed")
+
         raise HTTPException(status_code=500, detail="Chat generation failed")
         raise HTTPException(status_code=500, detail="Chat generation failed")
 
@@ -332,3 +350,4 @@ async def delete_document(document_id: str, request: Request):
         raise HTTPException(status_code=404, detail="Document not found")
 
     return {"documentId": document_id, "deleted": True}
+
