@@ -1439,8 +1439,8 @@ export default function VakilFriendChat() {
                     flex: showAvatar ? '1' : '1', // taking full width if no avatar, or sharing width if avatar
                     maxWidth: showAvatar ? '50%' : '100%',
                     transition: 'max-width 0.3s ease',
-                    background: '#FFFFFF',
-                    border: '1px solid #E5E7EB',
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border-light)',
                     borderRadius: '1.25rem',
                     overflow: 'hidden',
                     boxShadow: '0 10px 30px rgba(30, 42, 68, 0.06)'
@@ -1449,8 +1449,8 @@ export default function VakilFriendChat() {
                 {/* Chat Header */}
                 <div style={{
                     padding: '1.25rem 1.5rem',
-                    background: '#F8FAFC',
-                    borderBottom: '1px solid #E5E7EB',
+                    background: 'var(--bg-hover)',
+                    borderBottom: '1px solid var(--border-light)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
@@ -1545,8 +1545,8 @@ export default function VakilFriendChat() {
                                         </div>
                                         <div style={{
                                             padding: '1rem 1.25rem',
-                                            background: msg.role === 'user' ? '#F1F5F9' : '#FFFFFF',
-                                            border: msg.role === 'user' ? '1px solid #E2E8F0' : '1px solid #E5E7EB',
+                                            background: msg.role === 'user' ? 'var(--bg-hover)' : 'var(--bg-surface)',
+                                            border: msg.role === 'user' ? '1px solid var(--border-medium)' : '1px solid var(--border-light)',
                                             borderRadius: msg.role === 'user'
                                                 ? '1rem 1rem 0.25rem 1rem'
                                                 : '1rem 1rem 1rem 0.25rem',
