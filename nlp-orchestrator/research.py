@@ -84,52 +84,25 @@ async def _call_groq_with_retry(question: str, kanoon_context: str | None = None
     }
 
 
-async def stream_groq_chat(messages, model: str, temperature: float = 0.2, max_tokens: int = 800):
-    """
-    Async generator that streams tokens from Groq using the SDK streaming API.
+async def stream_groq_chat(messages, model, max_tokens=1024):
 
-    Yields incremental text chunks as they arrive. Consumers should `async for` over
-    this generator and forward received chunks to the SSE layer without accumulating
-    the full response.
-    """
-    # Request a streaming response from Groq
-    try:
-        stream = await groq_client.chat.with_streaming_response.completions.create(
-            model=model,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            stream=True,
-        )
+    async with groq_client.chat.with_streaming_response.completions.create(
+        model=model,
+        messages=messages,
+        temperature=0.3,
+        max_tokens=max_tokens,
+    ) as stream:
 
         async for chunk in stream:
-            # Try to extract token delta (streaming) or message content (final)
+
             try:
-                choice = chunk.choices[0]
+                content = chunk.choices[0].delta.content
+
+                if content:
+                    yield content
+
             except Exception:
                 continue
-
-            # delta.content is common in streaming chunks; fallback to message.content
-            text = None
-            delta = getattr(choice, "delta", None)
-            if delta is not None:
-                text = getattr(delta, "content", None)
-
-            if not text:
-                message = getattr(choice, "message", None)
-                if message is not None:
-                    text = getattr(message, "content", None)
-
-            if text:
-                # Normalize to string and yield small chunks
-                yield str(text)
-
-    except asyncio.CancelledError:
-        # Propagate cancellation so callers can cleanup
-        raise
-    except Exception:
-        # On any streaming error yield nothing (caller can emit an error event)
-        return
 
 
 @retry_transient

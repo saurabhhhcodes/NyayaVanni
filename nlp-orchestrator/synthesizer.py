@@ -80,60 +80,38 @@ async def synthesize_answers(
         return "\n\n".join(parts)
 
 
-async def stream_synthesize_answers(
-    original_query: str,
-    research_results: list[dict]
-):
-    """
-    Async generator that streams synthesis tokens incrementally.
-    Yields individual text chunks as they arrive from Groq.
-    
-    Usage:
-        async for token in stream_synthesize_answers(query, results):
-            yield sse_event("synthesis_token", {"chunk": token})
-    """
-    formatted_research = format_research_for_synthesis(research_results)
-    
-    try:
-        stream = await client.chat.with_streaming_response.completions.create(
-            model=GROQ_MODEL_FAST,
-            messages=[
-                {
-                    "role": "user",
-                    "content": SYNTHESIS_PROMPT.format(
-                        research_results=formatted_research,
-                        original_query=original_query
-                    )
-                }
-            ],
-            temperature=0.3,
-            max_tokens=2048,
-            stream=True
-        )
-        
+async def stream_synthesize_answers(query, research_results):
+
+    messages = [
+        {
+            "role": "system",
+            "content": "You are a legal synthesis assistant."
+        },
+        {
+            "role": "user",
+            "content": f"""
+Query: {query}
+
+Research Results:
+{research_results}
+"""
+        }
+    ]
+
+    async with client.chat.with_streaming_response.completions.create(
+        model="llama3-70b-8192",
+        messages=messages,
+        temperature=0.3,
+        max_tokens=1024,
+    ) as stream:
+
         async for chunk in stream:
+
             try:
-                choice = chunk.choices[0]
+                content = chunk.choices[0].delta.content
+
+                if content:
+                    yield content
+
             except Exception:
                 continue
-            
-            # Extract token delta from streaming chunk
-            text = None
-            delta = getattr(choice, "delta", None)
-            if delta is not None:
-                text = getattr(delta, "content", None)
-            
-            # Fallback to message content if delta is empty
-            if not text:
-                message = getattr(choice, "message", None)
-                if message is not None:
-                    text = getattr(message, "content", None)
-            
-            if text:
-                yield str(text)
-    
-    except asyncio.CancelledError:
-        raise
-    except Exception as e:
-        print(f"[StreamSynthesizer] Error: {e}")
-        return
