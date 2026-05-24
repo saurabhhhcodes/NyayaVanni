@@ -204,28 +204,28 @@ Extracts:
 ```text
 NyayaVanni/
 │
-├── .github/              # Issue and PR templates for contributors
+├── .github/
 │
-├── backend/              # FastAPI application
-│   ├── api/              # Route endpoints (routes.py)
-│   ├── data/             # Vector embeddings and FAISS indexes
-│   ├── models/           # Data schemas (schemas.py)
-│   ├── services/         # AI logic (RAG, Gemini, OCR, Graphs)
-│   └── uploads/          # Temporary document storage
+├── backend/
+│   ├── api/
+│   ├── data/
+│   ├── models/
+│   ├── services/
+│   └── uploads/
 │
-├── frontend/             # React application (Vite + Tailwind)
-│   ├── public/           # Static web assets and icons
-│   └── src/              # Frontend logic (pages, components, hooks)
+├── frontend/
+│   ├── public/
+│   └── src/
 │
-├── designs/              # UI mockups and PRD files
-├── screenshots/          # App previews for documentation
-├── tests/                # backend test suites (pytest)
+├── designs/
+├── screenshots/
+├── tests/
 │
 ├── CODE_OF_CONDUCT.md
-├── CONTRIBUTING.md       # Open-source contribution guidelines
+├── CONTRIBUTING.md
 ├── LICENSE
 ├── main.py
-└── README.md             # Main project documentation
+└── README.md
 ```
 
 ---
