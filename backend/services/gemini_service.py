@@ -3,12 +3,64 @@ import os
 import json
 import logging
 import re
+from pydantic import BaseModel, Field
+from typing import List, Optional, Literal
+from datetime import date
+
 from dotenv import load_dotenv
 
 load_dotenv()
 
 # Import the custom Legal Query Optimizer
 from services.legal_processor import LegalQueryOptimizer
+
+
+
+# Define Pydantic models for structured data
+class Party(BaseModel):
+    name: str
+    role: str
+
+class DateEntry(BaseModel):
+    # Using Literal to restrict the type to specific choices
+    type: Literal["notice_date", "response_deadline"]
+    # Pydantic will automatically validate strings like "2024-12-31" into date objects
+    value: date 
+
+class ActionItem(BaseModel):
+    priority: Literal["high", "medium", "low"]
+    action: str = Field(description="What to do next")
+    why: str = Field(description="Reason for the action")
+    timeline: str = Field(description="When to do it")
+
+class DocumentAnalysis(BaseModel):
+    document_type: str = Field(
+        description="Type of document (e.g., FIR, Notice, Contract, etc.)"
+    )
+    parties: List[Party]
+    dates: List[DateEntry]
+    sections: List[str] = Field(
+        description="Extract explicit legal sections/laws from Document, or apply from Relevant Laws"
+    )
+    clauses: List[str] = Field(
+        description="Extract key clauses/obligations from Document"
+    )
+    summary: str = Field(
+        description="A clear 2-3 sentence explanation of the document."
+    )
+    risk_level: Literal["Low", "Medium", "High"]
+    urgency: Literal["Immediate", "Soon", "Normal"]
+    consequences: List[str] = Field(
+        description="List of potential outcomes"
+    )
+    recommended_timeline: str = Field(
+        description="e.g., Respond within X days"
+    )
+    actions: List[ActionItem]
+
+
+
+
 
 logger = logging.getLogger(__name__)
 
@@ -31,12 +83,16 @@ generation_config = {
   "top_k": 40,
   "max_output_tokens": 8192,
   "response_mime_type": "application/json",
+  "response_schema": DocumentAnalysis ,
 }
 
 chat_config = {
   "temperature": 0.5,
   "response_mime_type": "text/plain",
 }
+
+
+
 
 model = genai.GenerativeModel(
     model_name="gemini-3.1-flash-lite-preview",
@@ -47,6 +103,69 @@ chat_model = genai.GenerativeModel(
     model_name="gemini-3.1-flash-lite-preview",
     generation_config=chat_config
 )
+
+
+def _parse_structured_response(resp) -> dict:
+    """
+    Robustly extract JSON/dict from various model response shapes.
+    Supports objects with a `.json()` method, a `.text` field containing
+    either raw JSON or fenced ```json``` blocks, or plain dicts.
+    This is a module-level helper so it can be unit-tested independently.
+    """
+    # If the model already returned a dict-like object
+    if isinstance(resp, dict):
+        return resp
+
+    # If response exposes a json() method (common for requests-like objects)
+    if hasattr(resp, "json") and callable(getattr(resp, "json")):
+        try:
+            data = resp.json()
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            pass
+
+    # Try to get text payload
+    text = None
+    if hasattr(resp, "text"):
+        try:
+            text = resp.text
+        except Exception:
+            text = None
+
+    # If the resp itself is a str, use it
+    if text is None and isinstance(resp, str):
+        text = resp
+
+    if not text:
+        # Try to stringify the object
+        try:
+            text = json.dumps(resp)
+        except Exception:
+            text = None
+
+    if text:
+        # Remove fenced code blocks if present
+        m = re.search(r'```(?:json)?\s*(\{.*\})\s*```', text, re.DOTALL)
+        if m:
+            candidate = m.group(1)
+        else:
+            candidate = text
+
+        # Try direct JSON parse
+        try:
+            return json.loads(candidate)
+        except Exception:
+            # Fallback: find the first { and last } and parse the substring
+            start = candidate.find('{')
+            end = candidate.rfind('}')
+            if start != -1 and end != -1 and end > start:
+                try:
+                    return json.loads(candidate[start:end+1])
+                except Exception:
+                    pass
+
+    raise ValueError("Unable to parse structured JSON from model response")
 
 def analyze_document_with_gemini(document_text: str, retrieved_laws: list, language: str = "en") -> dict:
     # Truncate document and laws to keep total prompt under model limits
@@ -95,22 +214,12 @@ def analyze_document_with_gemini(document_text: str, retrieved_laws: list, langu
     
     try:
         response = model.generate_content(prompt)
-        text = response.text
-        # Clean potential markdown markdown wrapping if Gemini messes up
-        match = re.search(r'```(?:json)?\n(.*?)\n```', text, re.DOTALL)
-        if match:
-            text = match.group(1)
-        else:
-            # Fallback to finding the first { and last }
-            start = text.find('{')
-            end = text.rfind('}')
-            if start != -1 and end != -1:
-                text = text[start:end+1]
-
-        return json.loads(text)
+        # Parse into a dict using the module-level helper and return
+        parsed = _parse_structured_response(response)
+        return parsed
     except Exception as e:
         logger.error(f"Gemini Analysis Failed: {e}")
-        raise e
+        raise
 
 
 def generate_chat_response(document_analysis: dict, chat_history: list, user_message: str, language: str = "en") -> str:
