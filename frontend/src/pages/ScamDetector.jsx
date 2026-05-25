@@ -124,7 +124,8 @@ function scoreText(text) {
 
   // Extra heuristics
   const hasManyCaps = (text.match(/[A-Z]/g) || []).length >= 20;
-  const hasLotsOfSymbols = (text.match(/[!$%^&*()_+={}[\];:'",.<>/?\\|-]/g) || []).length >= 12;
+  const hasLotsOfSymbols =
+    (text.match(/[!$%^&*()_+={}[\];:'",.<>/?\\|-]/g) || []).length >= 12;
   const hasPhone = /(\+?\d[\d\s-]{8,}\d)/.test(text);
 
   if (hasManyCaps) score += 8;
@@ -204,7 +205,12 @@ export default function ScamDetector() {
               <span className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-nyaya-500/15 border border-nyaya-500/25">
                 <Scale className="text-nyaya-600 dark:text-nyaya-400 w-5 h-5" />
               </span>
-              <span>Nyaya<span className="text-nyaya-600 dark:text-nyaya-400">Vanni</span></span>
+              <span>
+                Nyaya
+                <span className="text-nyaya-600 dark:text-nyaya-400">
+                  Vanni
+                </span>
+              </span>
             </div>
           </div>
 
@@ -230,7 +236,8 @@ export default function ScamDetector() {
             Scam Detector for Legal Messages
           </h1>
           <p className="mt-4 text-base md:text-lg text-slate-600 dark:text-slate-350">
-            Paste a message / notice text. You’ll get a risk score + reasons. (This is not legal advice.)
+            Paste a message / notice text. You’ll get a risk score + reasons.
+            (This is not legal advice.)
           </p>
         </div>
 
@@ -239,7 +246,9 @@ export default function ScamDetector() {
           {/* input */}
           <div className="lg:col-span-3 rounded-[2rem] border border-slate-200 dark:border-white/10 bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl p-6 shadow-md">
             <div className="flex items-center justify-between gap-3 mb-4">
-              <h2 className="text-lg font-bold text-slate-850 dark:text-white">Message / Notice Text</h2>
+              <h2 className="text-lg font-bold text-slate-850 dark:text-white">
+                Message / Notice Text
+              </h2>
               <div className="flex items-center gap-2">
                 <button
                   onClick={onCopy}
@@ -292,30 +301,47 @@ export default function ScamDetector() {
             {!analysis ? (
               <div className="text-center py-10">
                 <ShieldCheck className="w-12 h-12 text-slate-500 dark:text-slate-400 mx-auto mb-4" />
-                <h3 className="text-xl font-bold text-slate-850 dark:text-white">No analysis yet</h3>
+                <h3 className="text-xl font-bold text-slate-850 dark:text-white">
+                  No analysis yet
+                </h3>
                 <p className="text-slate-600 dark:text-slate-400 mt-2 text-sm">
-                  Paste text and click <span className="text-slate-800 dark:text-slate-200 font-semibold">Analyze</span>.
+                  Paste text and click{" "}
+                  <span className="text-slate-800 dark:text-slate-200 font-semibold">
+                    Analyze
+                  </span>
+                  .
                 </p>
               </div>
             ) : (
               <div>
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">Risk Score</p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                      Risk Score
+                    </p>
                     <div className="flex items-center gap-2 mt-1">
-                      <span className="text-3xl font-extrabold text-slate-850 dark:text-white">{analysis.score}</span>
-                      <span className="text-sm text-slate-500 dark:text-slate-400">/ 100</span>
+                      <span className="text-3xl font-extrabold text-slate-850 dark:text-white">
+                        {analysis.score}
+                      </span>
+                      <span className="text-sm text-slate-500 dark:text-slate-400">
+                        / 100
+                      </span>
                     </div>
                     <p
                       className={`mt-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-semibold
-                        ${risk.tone === "high"
-                          ? "bg-rose-500/15 border border-rose-500/25 text-rose-800 dark:text-rose-200"
-                          : risk.tone === "mid"
-                            ? "bg-amber-500/15 border border-amber-500/25 text-amber-800 dark:text-amber-200"
-                            : "bg-emerald-500/15 border border-emerald-500/25 text-emerald-800 dark:text-emerald-200"
+                        ${
+                          risk.tone === "high"
+                            ? "bg-rose-500/15 border border-rose-500/25 text-rose-800 dark:text-rose-200"
+                            : risk.tone === "mid"
+                              ? "bg-amber-500/15 border border-amber-500/25 text-amber-800 dark:text-amber-200"
+                              : "bg-emerald-500/15 border border-emerald-500/25 text-emerald-800 dark:text-emerald-200"
                         }`}
                     >
-                      {risk.tone === "high" ? <BadgeAlert className="w-4 h-4" /> : <BadgeCheck className="w-4 h-4" />}
+                      {risk.tone === "high" ? (
+                        <BadgeAlert className="w-4 h-4" />
+                      ) : (
+                        <BadgeCheck className="w-4 h-4" />
+                      )}
                       {risk.label}
                     </p>
                   </div>
@@ -328,12 +354,16 @@ export default function ScamDetector() {
                         style={{ width: `${analysis.score}%` }}
                       />
                     </div>
-                    <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-650 text-right">Heuristic score</p>
+                    <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-650 text-right">
+                      Heuristic score
+                    </p>
                   </div>
                 </div>
 
                 <div className="mt-6">
-                  <h4 className="text-slate-850 dark:text-white font-bold mb-3">Reasons flagged</h4>
+                  <h4 className="text-slate-850 dark:text-white font-bold mb-3">
+                    Reasons flagged
+                  </h4>
                   <div className="space-y-2">
                     {RULES.map((r) => {
                       const hit = analysis.hits.includes(r.id);
@@ -349,11 +379,15 @@ export default function ScamDetector() {
                             ) : (
                               <BadgeCheck className="w-4 h-4 text-slate-400 dark:text-slate-500" />
                             )}
-                            <span className={`text-sm ${hit ? "text-slate-800 dark:text-slate-100" : "text-slate-605 dark:text-slate-400"}`}>
+                            <span
+                              className={`text-sm ${hit ? "text-slate-800 dark:text-slate-100" : "text-slate-605 dark:text-slate-400"}`}
+                            >
                               {r.label}
                             </span>
                           </div>
-                          <span className={`text-xs font-semibold ${hit ? "text-slate-700 dark:text-slate-200" : "text-slate-500"}`}>
+                          <span
+                            className={`text-xs font-semibold ${hit ? "text-slate-700 dark:text-slate-200" : "text-slate-500"}`}
+                          >
                             +{r.weight}
                           </span>
                         </div>
@@ -362,11 +396,15 @@ export default function ScamDetector() {
                   </div>
 
                   <div className="mt-6 p-4 rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-100/50 dark:bg-slate-950/30">
-                    <p className="text-sm text-slate-800 dark:text-slate-300 font-semibold">What to do next</p>
+                    <p className="text-sm text-slate-800 dark:text-slate-300 font-semibold">
+                      What to do next
+                    </p>
                     <ul className="mt-2 text-sm text-slate-650 dark:text-slate-400 space-y-1 list-disc list-inside">
                       <li>Do not share OTP/passwords/bank details.</li>
                       <li>Verify the sender via official website/number.</li>
-                      <li>If it’s serious, consult a lawyer (Hire a Lawyer page).</li>
+                      <li>
+                        If it’s serious, consult a lawyer (Hire a Lawyer page).
+                      </li>
                     </ul>
                   </div>
                 </div>
@@ -380,9 +418,9 @@ export default function ScamDetector() {
         </div>
       </main>
 
-      <section className="z-10 w-full px-6 mx-auto max-w-7xl">
+      <div className="max-w-7xl mx-auto px-6">
         <Footer />
-      </section>
+      </div>
     </div>
   );
 }

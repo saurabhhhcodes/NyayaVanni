@@ -228,9 +228,9 @@ export default function GeneralChat() {
         </div>
       </main>
 
-      <section className="z-10 w-full px-6 pb-16 mx-auto max-w-7xl">
+      <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 shrink-0 pb-6">
         <Footer />
-      </section>
+      </div>
     </div>
   );
 }
