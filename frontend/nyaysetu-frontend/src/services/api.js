@@ -163,6 +163,7 @@ export const documentAPI = {
 export const documentGenerateAPI = {
     preview: (data) => api.post('/api/documents/generate/preview', data),
     download: (data) => api.post('/api/documents/generate/download', data, { responseType: 'blob' }),
+    downloadDocx: (data) => api.post('/api/documents/generate/download/docx', data, { responseType: 'blob' }),
 };
 
 // Hearing API
