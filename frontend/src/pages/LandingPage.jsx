@@ -144,7 +144,7 @@ export default function LandingPage() {
             >
               <input 
                 ref={inputRef} type="file" className="hidden" 
-                accept="application/pdf,image/png,image/jpeg,.docx"
+                accept="application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,image/png,image/jpeg"
                 onChange={handleChange} 
               />
               
@@ -286,7 +286,7 @@ export default function LandingPage() {
             {[
               {
                 q: "What file types are supported?",
-                a: "You can upload PDF, DOCX, PNG, and JPG files. For best results, use clear scans and readable text."
+                a: "You can upload PDF, Word Document (.docx), PNG, and JPG files. For best results, use clear scans and readable text."
               },
               {
                 q: "Is my document stored permanently?",
