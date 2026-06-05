@@ -295,9 +295,8 @@ export default function LandingPage() {
                 a: "Check your internet connection and try a smaller file. If the backend is offline, you’ll see a fallback demo navigation."
               },
             ].map((item, idx) => (
-              <details
-                key={idx}
-                className="p-5 transition border group rounded-xl border-slate-200 dark:border-slate-700/50 bg-white/50 dark:bg-slate-950/40 hover:border-slate-350 dark:hover:border-slate-650 transition-all duration-300"
+              <details key={idx}
+                className="p-5 border group rounded-xl cursor-pointer  border-slate-200 dark:border-slate-700/50  bg-white/50 dark:bg-slate-950/40  transition-all duration-300  hover:-translate-y-1 hover:bg-white/80 dark:hover:bg-slate-900/70  hover:border-nyaya-400/50 dark:hover:border-nyaya-500/50  hover:shadow-lg hover:shadow-nyaya-500/10"
               >
                 <summary className="flex items-center justify-between gap-4 list-none cursor-pointer">
                   <span className="font-semibold text-slate-800 dark:text-white">{item.q}</span>
