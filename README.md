@@ -502,3 +502,83 @@ This project is licensed under the **MIT License**. See the [LICENSE](./LICENSE)
   Built with purpose for a more accessible Indian Judiciary.<br/>
   <em>Nyay Setu — न्याय हर किसी का अधिकार है।</em>
 </p>
+## Local Development Setup
+
+### Prerequisites
+
+- Node.js
+- Java 17
+- Maven
+- Python 3.10+
+- Git
+
+---
+
+### Clone Repository
+
+```bash
+git clone https://github.com/viru0909-dev/nyay-setu-working.git
+cd nyay-setu-working
+```
+
+---
+
+### Frontend Setup
+
+```bash
+cd frontend/nyaysetu-frontend
+npm install
+npm run dev
+```
+
+Frontend runs on:
+
+```bash
+http://localhost:5173
+```
+
+---
+
+### Backend Setup
+
+```bash
+cd backend/nyaysetu-backend
+mvn spring-boot:run
+```
+
+Backend runs on:
+
+```bash
+http://localhost:8080
+```
+
+---
+
+### NLP Service Setup
+
+```bash
+cd nlp-orchestrator
+pip install -r requirements.txt
+python main.py
+```
+
+---
+
+### Common Issues
+
+#### Login / Network Error
+
+Ensure backend is running before starting frontend login flow.
+
+#### Maven Errors
+
+Always run Maven commands inside:
+
+```bash
+backend/nyaysetu-backend
+```
+
+#### Deployment Build Errors
+
+Linux deployment environments are case-sensitive.
+Ensure import paths exactly match filenames.
