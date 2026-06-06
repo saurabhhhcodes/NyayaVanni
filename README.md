@@ -7,6 +7,7 @@
   <img src="https://img.shields.io/badge/Gemini-AI-orange?style=for-the-badge&logo=google&logoColor=white" />
   <img src="https://img.shields.io/badge/TailwindCSS-Styling-38BDF8?style=for-the-badge&logo=tailwindcss&logoColor=white" />
   <img src="https://img.shields.io/badge/Open%20Source-GSSoC%202026-purple?style=for-the-badge" />
+  <img src="https://img.shields.io/github/license/choudharyms/NyayaVanni?style=for-the-badge" />
 </p>
 
 <p align="center">
