@@ -11,7 +11,7 @@ export default function FAQ() {
 
   const faqs = [
     { q: "What file formats are supported?", a: "PDF, PNG, and JPG are supported." },
-    { q: "Is NyayaVanni legal advice?", a: "No. It provides simplified explanations. Consult a lawyer for critical decisions." },
+    { q: "Does NyayaVanni provide legal advice?", a: "No. It provides simplified explanations. Consult a lawyer for critical decisions." },
     { q: "How does it work?", a: "We extract text and use AI to summarize, detect risks, and answer questions." },
     { q: "Is my data secure?", a: "We follow standard security practices, but no system is fully risk-free." },
   ];

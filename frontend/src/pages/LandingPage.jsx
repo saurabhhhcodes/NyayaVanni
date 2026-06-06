@@ -244,7 +244,7 @@ export default function LandingPage() {
  
               <h3 className="mb-3 text-2xl font-bold text-slate-850 dark:text-white">Scam Detector</h3>
               <p className="flex-1 max-w-xs mb-8 text-base text-center text-slate-600 dark:text-slate-400">
-                Analyze suspicious legal SMS/WhatsApp/email text and get a risk score + reasons.
+                Analyze suspicious legal SMS, WhatsApp, or email text and get a risk score with reasons.
               </p>
  
               <button
@@ -286,11 +286,11 @@ export default function LandingPage() {
             {[
               {
                 q: "What file types are supported?",
-                a: "You can upload PDF, Word Document (.docx), PNG, and JPG files. For best results, use clear scans and readable text."
+                a: "You can upload PDF, Word document (.docx), PNG, and JPG files. For best results, use clear scans with readable text."
               },
               {
                 q: "Is my document stored permanently?",
-                a: "By default, documents are processed for analysis. If storage is enabled, you may see history features; otherwise files are handled temporarily."
+                a: "By default, documents are processed for analysis. If storage is enabled, you may see history features; otherwise, files are handled temporarily."
               },
               {
                 q: "Can I trust the output as legal advice?",
@@ -298,7 +298,7 @@ export default function LandingPage() {
               },
               {
                 q: "What if the upload fails?",
-                a: "Check your internet connection and try a smaller file. If the backend is offline, you’ll see a fallback demo navigation."
+                a: "Check your internet connection and try a smaller file. If the backend is offline, you’ll be redirected to a fallback demo."
               },
             ].map((item, idx) => (
               <details key={idx}
@@ -328,7 +328,7 @@ export default function LandingPage() {
                 <span>Nyaya<span className="text-nyaya-400">Vanni</span></span>
               </div>
               <p className="mt-3 text-slate-600 dark:text-slate-400">
-                Understand Indian legal documents in simple language. Upload contracts/notices and get clearer insights fast.
+                Understand Indian legal documents in simple language. Upload contracts or notices and get clearer insights fast.
               </p>
             </div>
 
