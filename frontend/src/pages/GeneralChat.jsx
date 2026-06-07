@@ -390,7 +390,7 @@ export default function GeneralChat() {
                     bg-slate-50 dark:bg-slate-950
                     border border-slate-200 dark:border-slate-800
                     text-slate-900 dark:text-slate-100
-                    placeholder-slate-400 dark:placeholder-slate-500
+                    placeholder-slate-500 dark:placeholder-slate-400
                     focus:bg-white dark:focus:bg-slate-950
                     focus:border-nyaya-500
                     focus:ring-4 focus:ring-nyaya-500/10

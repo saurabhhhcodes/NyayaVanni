@@ -175,7 +175,7 @@ const CHAT_FORM = `p-4 bg-white dark:bg-slate-900
 const CHAT_INPUT = `flex-1 bg-slate-100 dark:bg-slate-950 
   border border-slate-200 dark:border-slate-800 
   text-slate-900 dark:text-slate-100 
-  placeholder-slate-450 dark:placeholder-slate-500 
+  placeholder-slate-500 dark:placeholder-slate-400 
   focus:bg-white dark:focus:bg-slate-950 
   focus:border-nyaya-500 focus:ring-2 focus:ring-nyaya-500/20 
   rounded-full px-5 outline-none transition-all py-3 text-sm`;

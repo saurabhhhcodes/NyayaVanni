@@ -47,7 +47,7 @@ const ACTION_BUTTON = `h-9 px-3 rounded-full bg-slate-100 dark:bg-white/5
 
 const TEXTAREA_BASE = `w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/40 
   border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white 
-  placeholder:text-slate-400 dark:placeholder:text-slate-500
+  placeholder:text-slate-500 dark:placeholder:text-slate-400
   focus:outline-none focus:ring-2 focus:ring-nyaya-500/70 focus:border-nyaya-500/50 transition`;
 
 const ANALYZE_BUTTON = `rounded-2xl px-6 py-3.5 font-semibold text-white
