@@ -5,9 +5,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 import os
 import asyncio
 from dotenv import load_dotenv
-from slowapi import _rate_limit_exceeded_handler
+from slowapi.middleware import SlowAPIMiddleware
+from middleware.rate_limit import limiter, rate_limit_handler
 from slowapi.errors import RateLimitExceeded
-from api.routes import limiter
 from services.storage_service import cleanup_expired_documents
 
 load_dotenv()
@@ -15,7 +15,8 @@ load_dotenv()
 app = FastAPI(title="NyayaVanni API", description="Legal Document Analyzer API")
 
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 @app.on_event("startup")
 async def startup_event():
