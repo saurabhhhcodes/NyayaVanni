@@ -18,8 +18,9 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.time.Duration;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import java.util.concurrent.TimeUnit;
 
 /**
  * RateLimitFilter
@@ -46,7 +47,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
      * Stores token buckets for each client IP.
      * ConcurrentHashMap ensures thread safety.
      */
-    private final Map<String, Bucket> cache = new ConcurrentHashMap<>();
+      private final Cache<String, Bucket> cache = Caffeine.newBuilder()
+        .maximumSize(100_000)
+        .expireAfterAccess(2, TimeUnit.MINUTES)
+        .build();
 
     /**
      * Maximum allowed requests per minute.
@@ -83,7 +87,9 @@ public class RateLimitFilter extends OncePerRequestFilter {
         if (isRateLimitedEndpoint(requestPath)) {
 
             String clientIp = getClientIp(request);
+
             Bucket bucket = cache.computeIfAbsent(clientIp, ip -> createNewBucket());
+          
             ConsumptionProbe probe = bucket.tryConsumeAndReturnRemaining(1);
 
             if (probe.isConsumed()) {
