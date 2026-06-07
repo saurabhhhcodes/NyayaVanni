@@ -31,6 +31,7 @@ from services.gemini_service import analyze_document_with_gemini, generate_chat_
 from services.search_service import search_documents, index_document, remove_document_from_index
 from models.schemas import ChatRequest, ChatResponse
 from services.confidence_service import ConfidenceService
+from config.rate_limits import UPLOAD_RATE_LIMIT
 logger = logging.getLogger(__name__)
 
 api_router = APIRouter()

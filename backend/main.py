@@ -42,7 +42,7 @@ app.add_middleware(
 def read_root():
     return {"message": "NyayaVanni Backend API is running."}
 
-from .api.routes import api_router, limiter
+from api.routes import api_router, limiter
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
