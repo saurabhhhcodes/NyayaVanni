@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Bot, User, Send, ArrowLeft, Scale } from "lucide-react";
+import { Bot, User, Send, ArrowLeft, Scale, Copy } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { useLanguage } from "../contexts/LanguageContext";
 import ThemeToggle from "../components/ThemeToggle";
@@ -164,18 +164,27 @@ export default function GeneralChat() {
                   )}
                 </div>
 
-                {/* Message Bubble Grid */}
+                {/* Message Bubble */}
                 <div
-                  className={`p-4 rounded-2xl max-w-[85%] sm:max-w-[75%] text-sm sm:text-base leading-relaxed whitespace-pre-wrap ${
+                  className={`relative group p-4 rounded-2xl max-w-[85%] sm:max-w-[75%] text-sm sm:text-base leading-relaxed whitespace-pre-wrap ${
                     msg.role === "user"
                       ? "bg-nyaya-900 text-white rounded-tr-sm shadow-md border border-nyaya-800"
                       : "bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-tl-sm text-slate-800 dark:text-slate-100 shadow-sm"
                   }`}
                 >
                   {msg.role === "assistant" ? (
-                    <div className="prose prose-sm max-w-none dark:prose-invert">
-                      <ReactMarkdown>{msg.message}</ReactMarkdown>
-                    </div>
+                    <>
+                      <div className="prose prose-sm max-w-none dark:prose-invert">
+                        <ReactMarkdown>{msg.message}</ReactMarkdown>
+                      </div>
+                      <button
+                        onClick={() => navigator.clipboard.writeText(msg.message)}
+                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-500 dark:text-slate-300"
+                        title="Copy to clipboard"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                    </>
                   ) : (
                     msg.message
                   )}
