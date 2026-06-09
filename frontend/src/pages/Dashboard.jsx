@@ -274,7 +274,8 @@ const [selectedType, _setSelectedType] = useState('all');
         });
       } catch (err) {
         if (import.meta.env.DEV) {
-          console.error("Error:", error);}
+          //console.error("Error:", error);
+          }
         const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
         let msg = err.message !== "Failed to fetch" && err.message !== "Analysis request failed" 
                    ? err.message 
@@ -346,7 +347,7 @@ const [selectedType, _setSelectedType] = useState('all');
         }
       }
     } catch (err) {
-      console.error(err);
+      //console.error(err);
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
       let msg = "This is a fallback response. The backend might not be running correctly.";
       
