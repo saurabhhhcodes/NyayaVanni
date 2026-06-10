@@ -17,11 +17,12 @@ import { ConversationHistoryProvider } from './contexts/ConversationHistoryConte
 import { Globe } from 'lucide-react';
 import NotFound from "./pages/NotFound";
 import BackToTop from './components/Backtotop';
+import ScrollToTop from './components/Scrolltotop';
 
 const LanguageToggle = () => {
   const { language, toggleLanguage } = useLanguage();
   return (
-    <button 
+    <button
       onClick={toggleLanguage}
       className="bg-slate-900 text-white p-3 rounded-full shadow-xl hover:bg-slate-800 transition-all flex items-center justify-center gap-2 font-bold ring-2 ring-white/10"
       title="Toggle Language"
@@ -38,6 +39,7 @@ function App() {
       <LanguageProvider>
         <ConversationHistoryProvider>
           <Router>
+             <ScrollToTop />
             {/* Theme-Responsive Root Layout Wrapper */}
             <div className="min-h-screen font-sans bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 selection:bg-nyaya-500 selection:text-white relative transition-colors duration-300">
             <Routes>
