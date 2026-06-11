@@ -31,13 +31,6 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-<<<<<<< HEAD
-
-import java.util.Arrays;
-import java.util.List;
-import java.util.stream.Collectors;
-=======
->>>>>>> origin/main
 
 @Configuration
 @EnableMethodSecurity
@@ -97,61 +90,14 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-<<<<<<< HEAD
-
-
-        // SAFE DEFAULT (Localhost fallback)
-        List<String> defaultOrigins = Arrays.asList(
-                "http://localhost:5173",
-                "http://localhost:3000",
-                "http://localhost"
-        );
-
-        if (allowedOrigins != null && !allowedOrigins.trim().isEmpty()) {
-=======
         
         // Use origins from application.properties / Env Var
         if (allowedOrigins != null && !allowedOrigins.isEmpty()) {
->>>>>>> origin/main
             List<String> origins = Arrays.stream(allowedOrigins.split(","))
                     .map(String::trim)
                     .filter(s -> !s.isEmpty())
                     .collect(Collectors.toList());
 
-<<<<<<< HEAD
-            if (origins.contains("*")) {
-                // SECURITY: Reject bare "*" when credentials are true
-                logger.warn("CORS_ALLOWED_ORIGINS contains bare '*'. This is unsafe with credentials. Falling back to localhost defaults.");
-                configuration.setAllowedOrigins(defaultOrigins);
-            } else if (origins.stream().anyMatch(o -> o.contains("*"))) {
-                // Specific patterns like https://*.example.com are safe
-                configuration.setAllowedOriginPatterns(origins);
-            } else {
-                // Exact valid domains
-                configuration.setAllowedOrigins(origins);
-            }
-        } else {
-            // Fallback if environment variable is missing
-            configuration.setAllowedOrigins(defaultOrigins);
-        }
-
-        // SECURITY IMPROVEMENTS:
-        // 1. Always allow credentials for the resolved safe origins
-        configuration.setAllowCredentials(true);
-
-        // 2. Add "PATCH" to allowed methods
-        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
-
-        // 3. Restrict headers instead of using wildcard "*" for better security
-        configuration.setAllowedHeaders(Arrays.asList(
-                "Authorization",
-                "Content-Type",
-                "Accept",
-                "Origin",
-                "X-Requested-With"
-        ));
-
-=======
             if (origins.isEmpty()) {
                 // SAFE DEFAULT: Allow local development origins only
                 configuration.setAllowedOrigins(Arrays.asList(
@@ -195,7 +141,6 @@ public class SecurityConfig {
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList("*"));
         
->>>>>>> origin/main
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
