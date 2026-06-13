@@ -1,30 +1,40 @@
 import { render, fireEvent, act } from '@testing-library/react';
-import { expect, it, describe, vi } from 'vitest';
+import { expect, it, describe, vi, beforeEach, afterEach } from 'vitest';
 import BackToTop from '../BackToTop';
 
 describe('BackToTop', () => {
-  it('is hidden when page is at top', () => {
-    const { queryByRole } = render(<BackToTop />);
-    expect(queryByRole('button')).toBeNull();
-  });
+      beforeEach(() => {
+      Object.defineProperty(window, 'scrollY', { value: 0, writable: true });
+      });
 
-  it('appears after scrolling down 300px', () => {
-    const { getByRole } = render(<BackToTop />);
-    act(() => {
-      Object.defineProperty(window, 'scrollY', { value: 400, writable: true });
-      fireEvent.scroll(window);
-    });
-    expect(getByRole('button')).toBeTruthy();
-  });
+      afterEach(() => {
+        vi.restoreAllMocks();
+      });
 
-  it('scrolls to top on click', () => {
-    window.scrollTo = vi.fn();
-    const { getByRole } = render(<BackToTop />);
-    act(() => {
-      Object.defineProperty(window, 'scrollY', { value: 400, writable: true });
-      fireEvent.scroll(window);
-    });
-    fireEvent.click(getByRole('button'));
-    expect(window.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'smooth' });
-  });
+      it('is hidden when page is at top', () => {
+        const { getByRole } = render(<BackToTop />);
+        const button = getByRole('button');
+        expect(button.style.opacity).toBe('0');
+        expect(button.style.pointerEvents).toBe('none');
+      });
+
+      it('appears after scrolling down 300px', () => {
+        const { getByRole } = render(<BackToTop />);
+        act(() => {
+          Object.defineProperty(window, 'scrollY', { value: 400, writable: true });
+          fireEvent.scroll(window);
+        });
+        expect(getByRole('button')).toBeTruthy();
+      });
+
+      it('scrolls to top on click', () => {
+        window.scrollTo = vi.fn();
+        const { getByRole } = render(<BackToTop />);
+        act(() => {
+          Object.defineProperty(window, 'scrollY', { value: 400, writable: true });
+          fireEvent.scroll(window);
+        });
+        fireEvent.click(getByRole('button'));
+        expect(window.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'smooth' });
+      });
 });
