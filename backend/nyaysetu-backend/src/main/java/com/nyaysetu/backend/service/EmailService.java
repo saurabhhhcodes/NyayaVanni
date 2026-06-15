@@ -48,7 +48,7 @@ public class EmailService {
 
         String token = UUID.randomUUID().toString();
         LocalDateTime expiryDate = LocalDateTime.now()
-                .plusSeconds(Duration.ofMillis(tokenValidityMs));
+                .plus(Duration.ofMillis(tokenValidityMs));
 
         PasswordResetToken resetToken = PasswordResetToken.builder()
                 .token(token)
