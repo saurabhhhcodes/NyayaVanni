@@ -450,14 +450,14 @@ export default function HireLawyer() {
                     <h3 className="text-lg font-bold text-slate-850 dark:text-white truncate transition-colors group-hover:text-nyaya-600 dark:group-hover:text-nyaya-300">
                       {lawyer.name}
                     </h3>
-                    <p className="text-sm font-semibold text-nyaya-600 dark:text-nyaya-300/90">{lawyer.specialty}</p>
+                    <p className="text-sm font-semibold text-nyaya-600 dark:text-nyaya-300/90 break-words line-clamp-2">{lawyer.specialty}</p>
                   </div>
                 </div>
 
                 <div className="mt-5 space-y-2 text-sm text-slate-600 dark:text-slate-300">
                   <div className="flex items-center gap-2">
                     <MapPin className="w-4 h-4 text-slate-400 dark:text-slate-500" />
-                    <span className="truncate">{lawyer.location}</span>
+                    <span className="truncate break-words">{lawyer.location}</span>
                   </div>
 
                   <div className="flex items-center gap-2">
