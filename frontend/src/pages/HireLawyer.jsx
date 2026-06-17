@@ -509,11 +509,11 @@ export default function HireLawyer() {
                     <img src={lawyer.image} alt={lawyer.name} className="object-cover w-full h-full" />
                   </div>
 
-                  <div className="min-w-0">
+                  <div className="min-w-0 break-words">
                     <h3 className="text-lg font-bold text-slate-850 dark:text-white truncate transition-colors group-hover:text-nyaya-600 dark:group-hover:text-nyaya-300">
                       {lawyer.name}
                     </h3>
-                    <p className="text-sm font-semibold text-nyaya-600 dark:text-nyaya-300/90">{lawyer.specialty}</p>
+                    <p className="text-sm font-semibold text-nyaya-600 dark:text-nyaya-300/90 line-clamp-2">{lawyer.specialty}</p>
                   </div>
                 </div>
 
