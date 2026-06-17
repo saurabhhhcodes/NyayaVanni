@@ -62,6 +62,9 @@ export default function Footer() {
               <button onClick={() => navigate('/terms')} className="text-left hover:text-nyaya-600 dark:hover:text-white transition duration-250 cursor-pointer">
                 {L.TERMS_OF_SERVICE}
               </button>
+              <a href="/docs" target="_blank" rel="noopener noreferrer" className="hover:text-nyaya-600 dark:hover:text-white transition duration-250">
+                API Docs
+              </a>
             </div>
           </div>
 
