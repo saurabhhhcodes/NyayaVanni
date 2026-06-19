@@ -344,7 +344,7 @@ const [selectedType, _setSelectedType] = useState('all');
           });
         }
       }
-    } catch (err) {
+    } catch {
       //console.error(err);
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
       let msg = "This is a fallback response. The backend might not be running correctly.";

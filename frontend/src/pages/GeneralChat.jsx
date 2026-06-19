@@ -172,7 +172,7 @@ export default function GeneralChat() {
           });
         }
       }
-    } catch (err) {
+    } catch {
       //console.error(err);
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
       let errorMessage =

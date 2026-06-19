@@ -19,6 +19,7 @@ import {
   BadgeCheck,
 } from "lucide-react";
 import { useLanguage } from "../contexts/LanguageContext";
+import { ARIA_LABELS, PLACEHOLDERS } from "../constants";
 
 import ThemeToggle from "../components/ThemeToggle";
 import Breadcrumb from "../components/Breadcrumb";

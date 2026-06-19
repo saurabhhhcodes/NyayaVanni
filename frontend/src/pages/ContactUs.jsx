@@ -1,4 +1,4 @@
-﻿import React, { useState } from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Mail, Phone, Clock, Send, CheckCircle, AlertCircle, MapPin } from "lucide-react";
 import { useLanguage } from "../contexts/LanguageContext";
@@ -8,7 +8,7 @@ import { EN, HI, CONTACT_PLACEHOLDERS } from "../constants";
 
 export default function ContactUs() {
   const navigate = useNavigate();
-  const { language, t } = useLanguage();
+  const { language } = useLanguage();
 
   const L = language === 'en' ? EN : HI;
 
@@ -59,7 +59,7 @@ export default function ContactUs() {
 
       setSubmitStatus("success");
       setFormData({ name: "", email: "", subject: "", message: "" });
-    } catch (error) {
+    } catch {
       setSubmitStatus("error");
     } finally {
       setIsSubmitting(false);

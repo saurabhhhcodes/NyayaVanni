@@ -407,15 +407,15 @@ npm run preview
 
 Open the preview URL shown in the terminal and manually verify the touched UI flow.
 
-## Current UI test status
-
-The frontend currently does not define a dedicated unit or integration test script in `frontend/package.json`. Until a test runner is added, use `npm run lint`, `npm run build`, and a local preview smoke check as the required frontend validation path.
-
-When a test runner is introduced, add the command to `frontend/package.json` and document it here, for example:
+## 5️⃣ Run UI tests
 
 ```bash
 npm run test
 ```
+
+## Current UI test status
+
+The frontend uses Vitest and React Testing Library for unit testing. You can run the test suite using the `npm run test` command. New components should include basic unit tests to ensure UI regressions are caught early.
 
 ---
 
