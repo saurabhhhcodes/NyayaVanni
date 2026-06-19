@@ -665,10 +665,13 @@ Heartiest thanks to all the brilliant minds helping shape NyayaVanni!  Open sour
 
 Big or small, your pull requests, issue reports, and feedback make a world of difference. Thank you for being a part of this journey! 💖
 
+A huge thank you to everyone who has contributed to NyayaVanni! ❤️
 
-<a href="https://github.com/your-username/NyayaVanni/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=your-username/NyayaVanni" />
+<a href="https://github.com/choudharyms/NyayaVanni/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=choudharyms/NyayaVanni" />
 </a>
+
+
 
 ---
 
