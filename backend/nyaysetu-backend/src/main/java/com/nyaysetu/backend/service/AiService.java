@@ -26,6 +26,7 @@ public class AiService {
     @Autowired
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
+    private final PiiSanitizer piiSanitizer;
 
     private static final String GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
     private static final String FALLBACK_MESSAGE = "AI service is temporarily experiencing high congestion. Please try again shortly.";
@@ -69,7 +70,7 @@ public class AiService {
             // User message
             ObjectNode userMsg = messagesArray.addObject();
             userMsg.put("role", "user");
-            userMsg.put("content", message);
+            userMsg.put("content", piiSanitizer.sanitizeForGroq(message));
 
             requestBody.put("temperature", 0.7);
 

@@ -42,9 +42,8 @@ public class BhashiniService {
     private static final String GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
     private final ObjectMapper objectMapper;
-    
-    @Autowired
-    private RestTemplate restTemplate;
+    private final RestTemplate restTemplate; // Injected bean with timeouts — see RestTemplateConfig
+    private final PiiSanitizer piiSanitizer;
 
     /**
      * Translate text from source language to target language
@@ -199,7 +198,7 @@ public class BhashiniService {
         userMsg.put("role", "user");
         userMsg.put("content", String.format(
             "Translate the following text from %s to %s. Return ONLY the translation:\n\n%s",
-            sourceLangName, targetLangName, text
+            sourceLangName, targetLangName, piiSanitizer.sanitizeForGroq(text)
         ));
         messagesArray.add(userMsg);
         
