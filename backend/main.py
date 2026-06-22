@@ -50,7 +50,8 @@ app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 app.add_middleware(SlowAPIMiddleware)
 
 @app.on_event("startup")
-async def startup_event():
+async def startup_event() -> None:
+    """Schedule periodic cleanup of expired uploaded documents."""
     asyncio.create_task(cleanup_expired_documents())
 
 # Configure CORS for React frontend
@@ -63,7 +64,8 @@ app.add_middleware(
 )
 
 @app.get("/")
-def read_root():
+def read_root() -> dict:
+    """Root health-check endpoint returning a simple status message."""
     return {"message": "NyayaVanni Backend API is running."}
 
 from .api.routes import api_router, limiter

@@ -10,6 +10,7 @@ limiter = Limiter(
 )
 
 async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    """Return a JSON 429 response when the client exceeds the rate limit."""
     return JSONResponse(
         status_code=429,
         content={
