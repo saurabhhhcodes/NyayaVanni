@@ -50,6 +50,16 @@ index = None
 corpus_embeddings = None
 
 def get_embeddings(texts: list) -> np.ndarray:
+    """
+    Generate embeddings for a list of texts using the Gemini embedding model.
+
+    Args:
+        texts: List of text strings to embed.
+
+    Returns:
+        A numpy array of float32 embeddings, or an empty array if
+        the input is empty, the API key is missing, or an error occurs.
+    """
     try:
         if not texts or not os.getenv("GEMINI_API_KEY"):
             return np.array([])
@@ -64,6 +74,14 @@ def get_embeddings(texts: list) -> np.ndarray:
         return np.array([])
 
 def build_index():
+    """
+    Build a FAISS index from the legal corpus embeddings.
+
+    Generates embeddings for all documents in the legal corpus and
+    adds them to a FAISS flat L2 index stored in a global variable.
+    Logs a warning and returns early if the corpus is empty or
+    embedding generation fails.
+    """
     global corpus_embeddings, index
 
     if not legal_corpus:
@@ -91,6 +109,13 @@ def build_index():
 INDEX_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'faiss_index.bin')
 
 def init_index():
+    """
+    Initialize the FAISS index by loading from cache or building fresh.
+
+    Checks for a cached FAISS index on disk and loads it if available.
+    Otherwise builds a new index from the legal corpus and saves it
+    to disk for future use.
+    """
     global index
     if os.path.exists(INDEX_PATH):
         logger.info("Loading cached FAISS index from disk...")
@@ -104,7 +129,20 @@ def init_index():
 init_index()
 
 def retrieve_relevant_laws(query_text: str, k=2) -> list:
-    """Search FAISS for the most relevant laws given the document's extracted text or sections"""
+    """
+    Retrieve the most relevant legal corpus entries for a given query.
+
+    Embeds the query text and searches the FAISS index for the closest
+    matching legal documents using L2 distance.
+
+    Args:
+        query_text: The legal query or document text to search against.
+        k: Number of top results to retrieve. Defaults to 2.
+
+    Returns:
+        A list of relevant legal corpus strings. Returns an empty list
+        if the index is unavailable or retrieval fails.
+    """
     if index is None or index.ntotal == 0:
         logger.warning(
             "RAG system degraded: FAISS index unavailable or empty. "
