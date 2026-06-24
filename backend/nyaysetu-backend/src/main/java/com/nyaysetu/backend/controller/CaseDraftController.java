@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -55,15 +56,27 @@ public class CaseDraftController {
 
     /**
      * POST endpoint to capture mandatory, explicit human verification and filing intent.
-     * Prevents prompt injections or automated LLM statements from forcing record persistence.
+     * Hardened Trust-Boundary: Extracts the authenticated user's name principal securely from 
+     * the Spring Security context to eliminate client-side parameter ID spoofing vulnerabilities.
      */
     @PostMapping("/{draftId}/confirm")
     public ResponseEntity<Map<String, Object>> confirmAndFileCase(
             @PathVariable Long draftId,
-            @RequestParam String authenticatedCitizenId) {
+            Authentication authentication) {
         
         log.info("[CriticalAudit] Intercepting programmatic filing confirmation intent for Draft ID: {}", draftId);
         Map<String, Object> responseMetadata = new HashMap<>();
+
+        // Ensure the authentication principal is active and valid
+        if (authentication == null || !authentication.isAuthenticated()) {
+            log.warn("[SecurityViolation] Unauthenticated request dropped at confirmation boundary for Draft ID: {}", draftId);
+            responseMetadata.put("success", false);
+            responseMetadata.put("message", "Access Denied: Unauthenticated security principal context.");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(responseMetadata);
+        }
+
+        // Securely resolve the citizen ID string parameter directly from the validated backend token principal context
+        String authenticatedCitizenId = authentication.getName();
 
         // 1. Enforce existence and strict multi-tenant owner boundary verification
         Optional<CaseDraft> draftOptional = caseDraftRepository.findByIdAndCitizenId(draftId, authenticatedCitizenId);
@@ -133,4 +146,3 @@ public class CaseDraftController {
         }
     }
 }
-
