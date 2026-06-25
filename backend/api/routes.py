@@ -4,6 +4,7 @@ import logging
 import io
 
 from fastapi import APIRouter, File, UploadFile, HTTPException, Depends, Request, Response
+import asyncio
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
@@ -125,11 +126,20 @@ async def upload_document(request: Request, file: UploadFile = File(...)):
         filename = file.filename
         if not filename:
             raise HTTPException(status_code=400, detail="Uploaded file must have a valid filename.")
-        ext = filename.split('.')[-1].lower() if '.' in filename else ''
-        if ext not in ALLOWED_EXTENSIONS or file.content_type not in ALLOWED_MIME_TYPES:
+
+        # Only allow safe filenames to be stored; do not trust user-controlled paths/characters.
+        safe_filename = os.path.basename(filename)
+        safe_filename = "".join(ch for ch in safe_filename if ch.isalnum() or ch in ("._-"))
+        if not safe_filename:
+            safe_filename = "upload"
+
+        ext = safe_filename.split('.')[-1].lower() if '.' in safe_filename else ''
+
+        # Validate type primarily by extension; client-provided content_type is not reliable.
+        if ext not in ALLOWED_EXTENSIONS:
             raise HTTPException(
                 status_code=400,
-                detail="Unsupported file format or MIME type. Only PDF, PNG, JPG, and JPEG are allowed."
+                detail="Unsupported file format. Only PDF, PNG, JPG, JPEG, and DOCX are allowed."
             )
 
         doc_id = str(uuid.uuid4())
@@ -166,8 +176,27 @@ async def upload_document(request: Request, file: UploadFile = File(...)):
 
 @api_router.post("/analyze/{document_id}")
 @limiter.limit(RATE_LIMIT_ANALYZE)
-def analyze_document(request: Request, document_id: str, language: str = "en", force_ocr: bool = False, file: UploadFile = File(None)):
+async def analyze_document(request: Request, document_id: str, language: str = "en", force_ocr: bool = False, file: UploadFile = File(None)):
     """Trigger full analysis pipeline."""
+
+    # Heavy OCR/LLM/DB work is executed in a worker thread to avoid blocking the event loop.
+    return await asyncio.to_thread(
+        _analyze_document_sync,
+        request,
+        document_id,
+        language,
+        force_ocr,
+        file,
+    )
+
+
+def _analyze_document_sync(
+    request: Request,
+    document_id: str,
+    language: str = "en",
+    force_ocr: bool = False,
+    file: UploadFile = File(None),
+):
     try:
         session_id = require_session_id(request)
         record = require_document_owner(document_id, session_id)
@@ -195,6 +224,9 @@ def analyze_document(request: Request, document_id: str, language: str = "en", f
             except IOError:
                 raise HTTPException(status_code=500, detail="Failed to read document from storage")
             filename = record["filename"]
+            ext_from_record = str(filename).lower().split('.')[-1] if '.' in str(filename) else ''
+            if ext_from_record not in ALLOWED_EXTENSIONS:
+                raise HTTPException(status_code=400, detail="Stored document has unsupported file type")
         else:
             contents = file.file.read()
             filename = file.filename
