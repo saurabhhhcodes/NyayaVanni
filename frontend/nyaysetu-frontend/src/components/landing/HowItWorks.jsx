@@ -105,8 +105,6 @@ export default function HowItWorks() {
 
                 {/* Steps */}
                 <div style={{ position: 'relative' }}>
-                    
-
                     <div style={{
                         display: 'grid',
                         gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
@@ -124,14 +122,13 @@ export default function HowItWorks() {
                                 style={{
                                     textAlign: 'center',
                                     position: 'relative',
-                                    padding: '1.5rem',
-                                    borderRadius: '1.5rem',
+                                    padding: '2.5rem 1.5rem',
+                                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                                    borderRadius: '16px',
+                                    boxShadow: '0 4px 24px rgba(0, 0, 0, 0.4)',
                                     transition: 'all 0.3s ease',
-                                    cursor: 'pointer',
-                                    background: 'var(--bg-glass)',
-                                    border: 'var(--border-glass)',
-                                    backdropFilter: 'var(--glass-blur)',
-                                    boxShadow: 'var(--shadow-glass)'
+                                    cursor: 'pointer'
                                 }}
                             >
                                 <motion.div
@@ -196,29 +193,29 @@ export default function HowItWorks() {
 
                                 {/* Arrow for desktop */}
                                 {idx < steps.length - 1 && (
-    <div
-        className="hiw-arrow"
-        style={{
-            position: 'absolute',
-            top: '72px',
-            right: '-65px',
-            display: 'flex',
-            alignItems: 'center',
-            color: step.color,
-            zIndex: 10,
-        }}
-    >
-        <div
-            style={{
-                width: '35px',
-                height: '2px',
-                background: step.color,
-                opacity: 0.4,
-            }}
-        />
-        <ArrowRight size={24} />
-    </div>
-)}
+                                    <div
+                                        className="hiw-arrow"
+                                        style={{
+                                            position: 'absolute',
+                                            top: '72px',
+                                            right: '-65px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            color: step.color,
+                                            zIndex: 10,
+                                        }}
+                                    >
+                                        <div
+                                            style={{
+                                                width: '35px',
+                                                height: '2px',
+                                                background: step.color,
+                                                opacity: 0.4,
+                                            }}
+                                        />
+                                        <ArrowRight size={24} />
+                                    </div>
+                                )}
                             </motion.div>
                         ))}
                     </div>
