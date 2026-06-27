@@ -73,6 +73,17 @@ class DocumentGenerationRequest(BaseModel):
 
 
 def require_session_id(request: Request) -> str:
+    """Extract and validate the session ID from the request cookie.
+
+    Args:
+        request: The incoming HTTP request.
+
+    Returns:
+        str: The validated session ID.
+
+    Raises:
+        HTTPException 401: If the session_id cookie is missing or invalid.
+    """
     session_id = request.cookies.get("session_id")
     if not session_id:
         raise HTTPException(status_code=401, detail="Missing session_id cookie")
@@ -82,6 +93,19 @@ def require_session_id(request: Request) -> str:
 
 
 def require_document_owner(document_id: str, session_id: str) -> dict:
+    """Verify that the session owns the requested document.
+
+    Args:
+        document_id: The unique identifier of the document.
+        session_id: The session ID from the request cookie.
+
+    Returns:
+        dict: The document record if ownership is confirmed.
+
+    Raises:
+        HTTPException 404: If the document is not found.
+        HTTPException 403: If the session does not own the document.
+    """
     record = get_document_record(document_id)
     if not record:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -670,3 +694,4 @@ def search_documents_endpoint(
     except Exception as e:
         logger.error(f"Search failed: {e}")
         raise HTTPException(status_code=500, detail="Search operation failed")
+
