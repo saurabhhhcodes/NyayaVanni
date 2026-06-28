@@ -26,6 +26,7 @@ export default function GeneralChat() {
     updateConversation,
     getConversation,
     setActiveConversationId,
+    deleteConversation,
   } = useConversationHistory();
 
   const [chatInput, setChatInput] = useState('');
@@ -263,8 +264,15 @@ export default function GeneralChat() {
     URL.revokeObjectURL(url);
   };
 
-  const handleClearChat = () => {
-    if (window.confirm('Clear all messages in this conversation?')) {
+  const handleClearChat = async () => {
+    if (window.confirm('Clear all messages in this conversation? This will delete it from history.')) {
+      if (currentConversationId) {
+        try {
+          await deleteConversation(currentConversationId);
+        } catch (err) {
+          console.error('Failed to delete active conversation:', err);
+        }
+      }
       setChatHistory([
         {
           role: 'assistant',
@@ -273,6 +281,7 @@ export default function GeneralChat() {
         },
       ]);
       setCurrentConversationId(null);
+      setActiveConversationId(null);
     }
   };
 
