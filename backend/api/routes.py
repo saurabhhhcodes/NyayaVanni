@@ -24,7 +24,8 @@ from ..services.document_classifier import classify_document
 from ..services.file_validation import detect_actual_mime, validate_file_magic_bytes
 from ..services.gemini_service import (analyze_document_with_gemini,
                                        generate_chat_response,
-                                       stream_chat_response)
+                                       stream_chat_response,
+                                       GEMINI_TIMEOUT)
 from ..services.knowledge_graph_service import LegalKnowledgeGraphBuilder
 from ..services.ocr_service import extract_document
 from ..services.rag_service import retrieve_relevant_laws
@@ -308,11 +309,17 @@ def analyze_document(
     except Exception as e:
         from google.api_core.exceptions import (GoogleAPIError,
                                                 InvalidArgument,
-                                                ResourceExhausted)
+                                                ResourceExhausted,
+                                                DeadlineExceeded)
 
         logger.error(f"Analysis failed: {e}")
 
-        if isinstance(e, ResourceExhausted):
+        if isinstance(e, DeadlineExceeded):
+            raise HTTPException(
+                status_code=504,
+                detail="AI request timed out. Please try again later.",
+            )
+        elif isinstance(e, ResourceExhausted):
             raise HTTPException(
                 status_code=429,
                 detail="AI Quota limit reached. Please wait a minute and try again.",
@@ -536,8 +543,9 @@ Provide a JSON response matching this exact schema:
   }}
 }}
 """
+        from google.api_core.exceptions import DeadlineExceeded
         model = genai.GenerativeModel("gemini-2.0-flash")
-        response = model.generate_content(prompt)
+        response = model.generate_content(prompt, request_options={"timeout": GEMINI_TIMEOUT})
         result = json.loads(response.text)
         return result
 
@@ -545,6 +553,9 @@ Provide a JSON response matching this exact schema:
         raise
     except HTTPException as http_err:
         raise http_err
+    except DeadlineExceeded as e:
+        logger.error(f"Diff analysis timed out: {e}")
+        raise HTTPException(status_code=504, detail="Diff analysis request timed out.")
     except Exception as e:
         logger.error(f"Diff analysis failed: {e}")
         raise HTTPException(status_code=500, detail="Diff analysis failed")

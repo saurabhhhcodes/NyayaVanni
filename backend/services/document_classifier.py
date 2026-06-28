@@ -5,6 +5,8 @@ import re
 from typing import Dict, List
 
 import google.generativeai as genai
+from google.api_core.exceptions import DeadlineExceeded
+from .gemini_service import GEMINI_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +112,7 @@ Document Text:
             generation_config=genai.GenerationConfig(
                 response_mime_type="application/json", temperature=0.1
             ),
+            request_options={"timeout": GEMINI_TIMEOUT},
         )
 
         result = json.loads(response.text)

@@ -32,10 +32,13 @@ if not api_key or not api_key.strip():
 else:
     genai.configure(api_key=api_key)
 
+from google.api_core.exceptions import DeadlineExceeded
+
 # Instantiate the optimizer module globally
 query_optimizer = LegalQueryOptimizer()
 
 GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL_NAME", "gemini-2.0-flash-001")
+GEMINI_TIMEOUT = float(os.getenv("GEMINI_TIMEOUT", "30.0"))
 
 generation_config = {
     "temperature": 0.3,
@@ -178,7 +181,7 @@ Extract and structure the output strictly in JSON format matching this schema:
     try:
         sys_inst = query_optimizer.get_system_instruction(language)
         analysis_model = _create_model(sys_inst + lang_suffix)
-        response = analysis_model.generate_content(prompt)
+        response = analysis_model.generate_content(prompt, request_options={"timeout": GEMINI_TIMEOUT})
         parsed = _parse_structured_response(response)
         return parsed
     except Exception as e:
@@ -239,9 +242,12 @@ Example Structure:
 
         sys_inst = query_optimizer.get_system_instruction(language)
         chat_model_instance = _create_chat_model(sys_inst)
-        response = chat_model_instance.generate_content(prompt)
+        response = chat_model_instance.generate_content(prompt, request_options={"timeout": GEMINI_TIMEOUT})
         return response.text
 
+    except DeadlineExceeded as e:
+        logger.error(f"Gemini Chat Timed Out (model={GEMINI_MODEL_NAME}): {e}")
+        return "AI service request timed out. Please try again in a few moments."
     except Exception as e:
         logger.error(f"Gemini Chat Failed (model={GEMINI_MODEL_NAME}): {e}")
         if "not found" in str(e).lower() or "not supported" in str(e).lower():
@@ -298,12 +304,15 @@ Example Structure:
 
         sys_inst = query_optimizer.get_system_instruction(language)
         chat_model_instance = _create_chat_model(sys_inst)
-        response = chat_model_instance.generate_content(prompt, stream=True)
+        response = chat_model_instance.generate_content(prompt, stream=True, request_options={"timeout": GEMINI_TIMEOUT})
 
         for chunk in response:
             if chunk.text:
                 yield chunk.text
 
+    except DeadlineExceeded as e:
+        logger.error(f"Gemini Chat Stream Timed Out (model={GEMINI_MODEL_NAME}): {e}")
+        yield "AI service request timed out. Please try again in a few moments."
     except Exception as e:
         logger.error(f"Gemini Chat Stream Failed (model={GEMINI_MODEL_NAME}): {e}")
         if "not found" in str(e).lower() or "not supported" in str(e).lower():
