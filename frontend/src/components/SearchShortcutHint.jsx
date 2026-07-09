@@ -1,11 +1,5 @@
-import React, { useState, useEffect } from 'react';
-
 const SearchShortcutHint = () => {
-  const [isMac, setIsMac] = useState(false);
-
-  useEffect(() => {
-    setIsMac(navigator.userAgent.toLowerCase().includes('mac'));
-  }, []);
+  const isMac = navigator.userAgent.toLowerCase().includes('mac');
 
   const shortcutText = isMac ? '⌘ K' : 'Ctrl K';
 

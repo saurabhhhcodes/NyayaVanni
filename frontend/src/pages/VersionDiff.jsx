@@ -75,7 +75,7 @@ const isValidFile = (file) => {
     setDragError(false);
     onFile(dropped);
   },
-  [onFile]
+  [onFile, isValidFile]
 );
 
   return (
