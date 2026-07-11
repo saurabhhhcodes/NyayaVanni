@@ -13,6 +13,22 @@ import sqlite3
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
+# Regex patterns for common Indian PII that should be redacted from search results
+PII_PATTERNS = [
+    (re.compile(r"\b\d{10}\b"), "**********"),  # 10-digit phone numbers
+    (re.compile(r"\b\d{12}\b"), "************"),  # Aadhaar (12 digits)
+    (re.compile(r"[A-Z]{5}\d{4}[A-Z]{1}"), "**********"),  # PAN
+    (re.compile(r"\b\d{16}\b"), "****************"),  # Credit card
+    (re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"), "***@***"),  # Email
+]
+
+
+def _redact_pii(text: str) -> str:
+    """Redact personally identifiable information from text."""
+    for pattern, replacement in PII_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text
+
 from .database import connect_db
 
 logger = logging.getLogger(__name__)
@@ -212,6 +228,11 @@ def search_documents(
         )
 
         results = [dict(row) for row in cursor.fetchall()]
+
+        # Redact PII from filenames in search results
+        for r in results:
+            r["filename"] = _redact_pii(r.get("filename", ""))
+
         conn.close()
 
         response = {
