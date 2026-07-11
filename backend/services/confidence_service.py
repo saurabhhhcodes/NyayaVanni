@@ -48,6 +48,15 @@ class ConfidenceService:
     @classmethod
     def generate(cls, document_text, summary):
 
+        if not document_text or len(document_text.strip()) < 50:
+            return {
+                "score": 0.0,
+                "level": "Low",
+                "coverage": 0.0,
+                "similarity": 0.0,
+                "warning": "Insufficient text extracted for reliable analysis",
+            }
+
         coverage = cls.calculate_text_coverage(document_text)
 
         similarity = cls.calculate_similarity(document_text, summary)
