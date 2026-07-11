@@ -20,6 +20,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from .middleware.rate_limit import limiter, rate_limit_handler
+from .middleware.security import SecurityHeadersMiddleware
 from .services.storage_service import cleanup_expired_documents
 
 load_dotenv()
@@ -61,6 +62,7 @@ init_search_service(STORAGE_DB_PATH)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 app.add_middleware(SlowAPIMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 @app.on_event("startup")
