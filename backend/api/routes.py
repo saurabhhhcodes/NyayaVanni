@@ -375,6 +375,13 @@ def _analyze_document_sync(
             contents, filename, force_ocr=force_ocr, language=language
         )
 
+        # Validate extracted text quality before analysis
+        if not text or len(text.strip()) < 50:
+            raise HTTPException(
+                status_code=400,
+                detail="Unable to extract sufficient readable text from the document. Please upload a clearer scan or image.",
+            )
+
         # Index document content for full-text search
         index_document(document_id, filename, text)
 
