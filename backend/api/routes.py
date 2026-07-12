@@ -28,6 +28,7 @@ from ..middleware.rate_limit import limiter
 from ..config.rate_limits import (
     CONTACT_RATE_LIMIT,
     DELETE_RATE_LIMIT,
+    SEARCH_RATE_LIMIT,
     UPLOAD_RATE_LIMIT,
     SEARCH_RATE_LIMIT,
 )
