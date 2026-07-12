@@ -19,7 +19,7 @@ export default function ContactUs() {
   const navigate = useNavigate();
   const { language } = useLanguage();
 
-  const L = language === 'en' ? EN : HI;
+  const L = language === 'hi' ? HI : EN;
 
   const [formData, setFormData] = useState({
     name: '',
