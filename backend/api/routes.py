@@ -382,7 +382,6 @@ def _analyze_document_sync(
         confidence = ConfidenceService.generate(
             document_text=text,
             summary=analysis_result.get("summary", ""),
-            relevant_laws=relevant_laws,
         )
         classification = classify_document(text)
         knowledge_graph = graph_builder.generate_graph(text)

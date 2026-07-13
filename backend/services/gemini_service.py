@@ -25,10 +25,6 @@ if not api_key or not api_key.strip():
         "GEMINI_API_KEY environment variable is not set or empty. "
         "RAG and Gemini features will be unavailable until configured."
     )
-
-    logger.warning(
-        "GEMINI_API_KEY environment variable is not set or empty. RAG and document analysis features will fail."
-    )
 else:
     genai.configure(api_key=api_key)
 
@@ -317,4 +313,5 @@ Example Structure:
         logger.error(f"Gemini Chat Stream Failed (model={GEMINI_MODEL_NAME}): {e}")
         if "not found" in str(e).lower() or "not supported" in str(e).lower():
             yield "AI service configuration error: The configured Gemini model is not available. Please contact the administrator."
+            return
         yield "AI service is currently unavailable. Please contact the administrator."
