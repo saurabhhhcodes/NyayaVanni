@@ -235,6 +235,12 @@ async def upload_document(request: Request, file: UploadFile = File(...)):
                 detail="Unsupported file format. Only PDF, PNG, JPG, JPEG, and DOCX are allowed.",
             )
 
+        if file.content_type and file.content_type not in ALLOWED_MIME_TYPES:
+            raise HTTPException(
+                status_code=400,
+                detail="Unsupported file content type. Only PDF, DOCX, and image files are allowed.",
+            )
+
         raw_bytes = await file.read()
         if len(raw_bytes) > MAX_FILE_SIZE:
             raise HTTPException(
@@ -483,10 +489,11 @@ def chat_stream_sse(
     if not user_message or not user_message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
+    session_id = require_session_id(request)
+
     analysis = {}
     if document_id:
         try:
-            session_id = require_session_id(request)
             require_document_owner(document_id, session_id)
             cached = get_cached_analysis(document_id, session_id, language)
             if cached:
@@ -829,14 +836,14 @@ def search_documents_endpoint(
     try:
         session_id = require_session_id(request)
 
-        if not q or len(q.strip()) < 2:
+        if not q or not q.strip() or len(q.strip()) < 2:
             raise HTTPException(
                 status_code=400, detail="Search query must be at least 2 characters"
             )
 
-        if page < 1:
+        if not isinstance(page, int) or page < 1:
             page = 1
-        if page_size < 1 or page_size > 100:
+        if not isinstance(page_size, int) or page_size < 1 or page_size > 100:
             page_size = 10
 
         result = search_documents(q, page=page, page_size=page_size, use_cache=True)

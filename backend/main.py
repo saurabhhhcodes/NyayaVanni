@@ -1,21 +1,11 @@
-import asyncio
 import os
+import re
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-
-from starlette.middleware.base import BaseHTTPMiddleware
-from slowapi.errors import RateLimitExceeded
-
-import os
-import asyncio
-from dotenv import load_dotenv
-
 from fastapi.responses import JSONResponse
-from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-
 from slowapi.middleware import SlowAPIMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -70,6 +60,28 @@ init_search_service(STORAGE_DB_PATH)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 app.add_middleware(SlowAPIMiddleware)
+
+
+@app.exception_handler(Exception)
+async def sanitized_exception_handler(request: Request, exc: Exception):
+    """Catch-all handler that sanitizes error messages by removing internal file paths."""
+    detail = "An internal error occurred."
+    status_code = 500
+
+    from fastapi import HTTPException
+    from starlette.exceptions import HTTPException as StarletteHTTPException
+
+    if isinstance(exc, (HTTPException, StarletteHTTPException)):
+        status_code = exc.status_code
+        detail = str(exc.detail)
+    else:
+        sanitized = re.sub(r"/[^\s]{10,}", "[path removed]", str(exc))
+
+        import logging
+        logger = logging.getLogger("uvicorn.error")
+        logger.error("Unhandled exception: %s", sanitized)
+
+    return JSONResponse(status_code=status_code, content={"detail": detail})
 
 
 @app.on_event("startup")
