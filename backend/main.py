@@ -50,6 +50,15 @@ class LimitUploadSizeMiddleware(BaseHTTPMiddleware):
 
 
 # Set global limit to 11MB to safely allow the 10MB document uploads.
+@app.middleware("http")
+async def validate_origin(request, call_next):
+    origin = request.headers.get("origin", "")
+    if request.method in ("POST", "PUT", "DELETE", "PATCH"):
+        if origin and "nyayavanni" not in origin and "localhost" not in origin:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+    return await call_next(request)
+
 app.add_middleware(LimitUploadSizeMiddleware, max_upload_size=11 * 1024 * 1024)
 
 from .services.search_service import init_search_service
