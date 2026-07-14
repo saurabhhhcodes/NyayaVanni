@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -162,6 +163,15 @@ def _ensure_sessions_table(cursor):
             expires_at TEXT NOT NULL
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS password_reset_tokens (
+            token_hash TEXT PRIMARY KEY,
+            email TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            used INTEGER NOT NULL DEFAULT 0
+        )
+    """)
 
 
 SESSION_TTL = timedelta(days=30)
@@ -259,6 +269,85 @@ def cleanup_expired_sessions_once() -> int:
             conn.rollback()
         logger.error(f"Session cleanup failed: {e}")
         return 0
+    finally:
+        if conn:
+            conn.close()
+
+
+PASSWORD_RESET_TTL = timedelta(hours=1)
+
+
+def store_password_reset_token(email: str) -> Optional[str]:
+    token = str(uuid.uuid4())
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    now = datetime.now(timezone.utc)
+    expires_at = now + PASSWORD_RESET_TTL
+    conn = None
+    try:
+        conn = _connect_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO password_reset_tokens (token_hash, email, created_at, expires_at, used) VALUES (?, ?, ?, ?, 0)",
+            (token_hash, email, now.isoformat(), expires_at.isoformat()),
+        )
+        conn.commit()
+        return token
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error(f"Password reset token storage failed: {e}")
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
+def verify_password_reset_token(token: str) -> Optional[str]:
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    conn = None
+    try:
+        conn = _connect_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT email, expires_at, used FROM password_reset_tokens WHERE token_hash = ?",
+            (token_hash,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        email, expires_at, used = row
+        if used:
+            logger.warning("Password reset token already used")
+            return None
+        if datetime.fromisoformat(expires_at) < datetime.now(timezone.utc):
+            logger.warning("Password reset token expired")
+            return None
+        return email
+    except Exception as e:
+        logger.error(f"Password reset token verification failed: {e}")
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
+def mark_password_reset_token_used(token: str) -> bool:
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    conn = None
+    try:
+        conn = _connect_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE password_reset_tokens SET used = 1 WHERE token_hash = ?",
+            (token_hash,),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error(f"Failed to mark password reset token used: {e}")
+        return False
     finally:
         if conn:
             conn.close()

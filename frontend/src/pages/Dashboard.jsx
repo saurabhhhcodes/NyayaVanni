@@ -25,7 +25,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 import rehypeSanitize from 'rehype-sanitize';
 import { useLanguage } from '../contexts/LanguageContext';
-import { ensureSessionId } from '../utils/session';
+import { ensureSessionId, logoutSession } from '../utils/session';
 import ThemeToggle from '../components/ThemeToggle';
 import Breadcrumb from '../components/Breadcrumb';
 import { useDocumentHistory } from '../hooks/useDocumentHistory';
@@ -580,6 +580,16 @@ export default function Dashboard() {
               <Share2 className="w-4 h-4" />
             </button>
             <ThemeToggle />
+            <button
+              onClick={async () => {
+                const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+                await logoutSession(apiUrl);
+                navigate('/');
+              }}
+              className="text-xs px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 transition-colors"
+            >
+              Logout
+            </button>
           </div>
         </div>
         <div className="max-w-7xl mx-auto px-6 py-2 border-t border-slate-200 dark:border-slate-800">

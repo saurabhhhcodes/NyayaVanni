@@ -1,3 +1,15 @@
 {
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [
+    { "source": "/", "destination": "/index.html" },
+    { "source": "/dashboard/:path*", "destination": "/index.html" },
+    { "source": "/chat", "destination": "/index.html" },
+    { "source": "/lawyers", "destination": "/index.html" },
+    { "source": "/faq", "destination": "/index.html" },
+    { "source": "/scam-detector", "destination": "/index.html" },
+    { "source": "/document-generator", "destination": "/index.html" },
+    { "source": "/contact", "destination": "/index.html" },
+    { "source": "/privacy-policy", "destination": "/index.html" },
+    { "source": "/terms", "destination": "/index.html" },
+    { "source": "/version-diff", "destination": "/index.html" }
+  ]
 }

@@ -40,6 +40,7 @@ export const LanguageProvider = ({ children }) => {
   const translations = {
     en: {
       'nav.hire': 'Hire a Lawyer',
+      'nav.logout': 'Logout',
       'nav.signin': 'Sign In',
       'nav.directory': 'Legal Experts Directory',
       'nav.contact': 'Contact Us',
@@ -95,6 +96,7 @@ export const LanguageProvider = ({ children }) => {
     },
     hi: {
       'nav.hire': 'वकील नियुक्त करें',
+      'nav.logout': 'लॉग आउट',
       'nav.signin': 'साइन इन करें',
       'nav.directory': 'कानूनी विशेषज्ञ निर्देशिका',
       'nav.contact': 'संपर्क करें',
@@ -149,6 +151,7 @@ export const LanguageProvider = ({ children }) => {
     },
     ta: {
       'nav.hire': 'வழக்கறிஞரை நியமிக்கவும்',
+      'nav.logout': 'வெளியேறு',
       'nav.signin': 'உள்நுழைக',
       'nav.directory': 'சட்ட நிபுணர் அடைவு',
       'nav.contact': 'தொடர்பு கொள்ளுங்கள்',

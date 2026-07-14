@@ -15,3 +15,15 @@ export async function ensureSessionId(apiUrl) {
     console.warn('Failed to initialize session cookie:', error);
   }
 }
+
+export async function logoutSession(apiUrl) {
+  try {
+    await fetch(`${apiUrl}/api/logout`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+  } catch (error) {
+    console.warn('Logout request failed:', error);
+  }
+  sessionInitialized = false;
+}

@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
-import { ensureSessionId } from '../utils/session';
+import { ensureSessionId, logoutSession } from '../utils/session';
 import ThemeToggle from '../components/ThemeToggle';
 import Footer from '../components/Footer';
 import { useDocumentHistory } from '../hooks/useDocumentHistory';
@@ -139,8 +139,15 @@ export default function LandingPage() {
             >
               {t('nav.contact')}
             </button>
-            <button className="px-5 py-2 font-medium text-slate-800 hover:bg-slate-100 dark:text-white dark:hover:bg-white/20 border border-slate-200 dark:border-white/10 bg-white/50 dark:bg-white/10 rounded-full backdrop-blur-md transition-all">
-              {t('nav.signin')}
+            <button
+              onClick={async () => {
+                const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+                await logoutSession(apiUrl);
+                window.location.reload();
+              }}
+              className="px-5 py-2 font-medium text-slate-800 hover:bg-slate-100 dark:text-white dark:hover:bg-white/20 border border-slate-200 dark:border-white/10 bg-white/50 dark:bg-white/10 rounded-full backdrop-blur-md transition-all"
+            >
+              {t('nav.logout')}
             </button>
             <ThemeToggle />
           </div>

@@ -31,7 +31,7 @@ from ..config.rate_limits import (
     LOGIN_RATE_LIMIT,
     UPLOAD_RATE_LIMIT,
 )
-from ..models.schemas import ChatRequest, ChatResponse, ContactRequest
+from ..models.schemas import ChatRequest, ChatResponse, ContactRequest, ForgotPasswordRequest, ResetPasswordRequest
 from ..services.confidence_service import ConfidenceService
 from ..services.document_classifier import classify_document
 from ..services.file_validation import detect_actual_mime, validate_file_magic_bytes
@@ -57,10 +57,13 @@ from ..services.storage_service import (
     get_cached_analysis,
     get_document_record,
     invalidate_session,
+    mark_password_reset_token_used,
     save_cached_analysis,
     save_document_record,
+    store_password_reset_token,
     upload_to_local,
     validate_session,
+    verify_password_reset_token,
 )
 
 logger = logging.getLogger(__name__)
@@ -285,6 +288,59 @@ async def logout(request: Request, response: Response):
         secure=session_secure,
     )
     return {"status": "Logged out"}
+
+
+PASSWORD_RESET_RATE_LIMIT = os.getenv("PASSWORD_RESET_RATE_LIMIT", "3/hour")
+
+
+@api_router.post("/auth/forgot-password")
+@limiter.limit(PASSWORD_RESET_RATE_LIMIT)
+async def forgot_password(request: Request, body: ForgotPasswordRequest):
+    """Request a password reset token for the given email.
+
+    Always returns success to prevent email enumeration.
+    """
+    _log_access(request, "forgot-password")
+    token = store_password_reset_token(body.email)
+    if token:
+        logger.info(
+            "Password reset token generated for %s (dev mode — token: %s)",
+            body.email,
+            token,
+        )
+    return {
+        "status": "ok",
+        "message": "If an account exists with that email, password reset instructions have been sent.",
+    }
+
+
+@api_router.post("/auth/reset-password")
+@limiter.limit(PASSWORD_RESET_RATE_LIMIT)
+async def reset_password(request: Request, body: ResetPasswordRequest):
+    """Reset the password using a valid reset token.
+
+    Validates password strength and confirm match via Pydantic.
+    """
+    _log_access(request, "reset-password")
+    try:
+        email = verify_password_reset_token(body.token)
+        if not email:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid or expired password reset token.",
+            )
+        if not mark_password_reset_token_used(body.token):
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to process password reset. Please try again.",
+            )
+        logger.info("Password reset successful for %s", email)
+        return {"status": "ok", "message": "Password has been reset successfully."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Password reset failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Password reset failed.")
 
 
 @api_router.post("/upload")

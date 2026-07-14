@@ -4,11 +4,12 @@ import os
 import re
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from .middleware.rate_limit import limiter, rate_limit_handler
@@ -108,14 +109,17 @@ app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 app.add_middleware(SlowAPIMiddleware)
 
 
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    sanitized = re.sub(r"/[^\s]{10,}", "[path removed]", str(exc.detail))
+    return JSONResponse(status_code=exc.status_code, content={"detail": sanitized})
+
+
 @app.exception_handler(Exception)
 async def sanitized_exception_handler(request: Request, exc: Exception):
     """Catch-all handler that sanitizes error messages by removing internal file paths."""
     detail = "An internal error occurred."
     status_code = 500
-
-    from fastapi import HTTPException
-    from starlette.exceptions import HTTPException as StarletteHTTPException
 
     if isinstance(exc, (HTTPException, StarletteHTTPException)):
         status_code = exc.status_code
@@ -123,8 +127,6 @@ async def sanitized_exception_handler(request: Request, exc: Exception):
     else:
         sanitized = re.sub(r"/[^\s]{10,}", "[path removed]", str(exc))
 
-        import logging
-        logger = logging.getLogger("uvicorn.error")
         logger.error("Unhandled exception: %s", sanitized)
 
     return JSONResponse(status_code=status_code, content={"detail": detail})
