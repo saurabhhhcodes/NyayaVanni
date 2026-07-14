@@ -4,7 +4,7 @@ import os
 import secrets
 import smtplib
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email.mime.text import MIMEText
 from typing import Any, Optional
 
@@ -242,6 +242,7 @@ def change_password(
             (new_hash, now_iso, user_id),
         )
         conn.commit()
+        _invalidate_user_cache(user_id)
         logger.info(f"Password changed for user {user_id}")
         return True, "Password changed successfully"
     except Exception as e:
@@ -267,6 +268,7 @@ def force_reset_password(user_id: str, new_password: str) -> tuple[bool, str]:
             (new_hash, now_iso, user_id),
         )
         conn.commit()
+        _invalidate_user_cache(user_id)
         logger.info(f"Password force-reset for user {user_id}")
         return True, "Password reset successfully"
     except Exception as e:
@@ -279,7 +281,17 @@ def force_reset_password(user_id: str, new_password: str) -> tuple[bool, str]:
             conn.close()
 
 
+_user_cache: dict[str, dict[str, Any]] = {}
+
+
+def _invalidate_user_cache(user_id: str) -> None:
+    _user_cache.pop(user_id, None)
+
+
 def get_user_by_id(user_id: str) -> Optional[dict[str, Any]]:
+    cached = _user_cache.get(user_id)
+    if cached is not None:
+        return cached
     conn = None
     try:
         conn = connect_db(STORAGE_DB_PATH)
@@ -290,7 +302,10 @@ def get_user_by_id(user_id: str) -> Optional[dict[str, Any]]:
             (user_id,),
         )
         row = cursor.fetchone()
-        return dict(row) if row else None
+        result = dict(row) if row else None
+        if result is not None:
+            _user_cache[user_id] = result
+        return result
     except Exception as e:
         logger.error(f"Failed to get user {user_id}: {e}")
         return None
@@ -309,6 +324,7 @@ def update_avatar_url(user_id: str, avatar_url: str) -> bool:
             (avatar_url, datetime.now(timezone.utc).isoformat(), user_id),
         )
         conn.commit()
+        _invalidate_user_cache(user_id)
         return cursor.rowcount > 0
     except Exception as e:
         logger.error(f"Failed to update avatar URL for user {user_id}: {e}")
@@ -469,4 +485,98 @@ def reset_password_with_token(token: str, new_password: str) -> tuple[bool, str]
             conn.close()
 
 
+# ---------------------------------------------------------------------------
+# 2FA verification (rate-limited)
+# ---------------------------------------------------------------------------
+
+TWO_FA_TABLE = "two_factor_codes"
+
+
+def init_two_factor_table() -> None:
+    conn = None
+    try:
+        conn = connect_db(STORAGE_DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS {TWO_FA_TABLE} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                code TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                used INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES {USERS_TABLE}(user_id)
+            )
+        """)
+        conn.commit()
+    except Exception as e:
+        logger.error(f"Failed to initialize 2FA table: {e}")
+        if conn:
+            conn.rollback()
+    finally:
+        if conn:
+            conn.close()
+
+
+def request_2fa_code(user_id: str) -> Optional[str]:
+    conn = None
+    try:
+        conn = connect_db(STORAGE_DB_PATH)
+        cursor = conn.cursor()
+        code = str(secrets.randbelow(900000) + 100000)
+        now = datetime.now(timezone.utc)
+        expires_at = now + timedelta(minutes=10)
+        cursor.execute(
+            f"INSERT INTO {TWO_FA_TABLE} (user_id, code, expires_at, created_at) VALUES (?, ?, ?, ?)",
+            (user_id, code, expires_at.isoformat(), now.isoformat()),
+        )
+        conn.commit()
+        return code
+    except Exception as e:
+        logger.error(f"Failed to create 2FA code for user {user_id}: {e}")
+        if conn:
+            conn.rollback()
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
+def verify_2fa_code(user_id: str, code: str) -> bool:
+    conn = None
+    try:
+        conn = connect_db(STORAGE_DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(
+            f"SELECT id, code, expires_at, used FROM {TWO_FA_TABLE} WHERE user_id = ? ORDER BY created_at DESC LIMIT 1",
+            (user_id,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return False
+        record_id, stored_code, expires_at_str, used = row
+        if used:
+            return False
+        expires_at = datetime.fromisoformat(expires_at_str)
+        if expires_at < datetime.now(timezone.utc):
+            return False
+        if stored_code != code:
+            return False
+        cursor.execute(
+            f"UPDATE {TWO_FA_TABLE} SET used = 1 WHERE id = ?",
+            (record_id,),
+        )
+        conn.commit()
+        return True
+    except Exception as e:
+        logger.error(f"2FA verification failed for user {user_id}: {e}")
+        if conn:
+            conn.rollback()
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
+init_two_factor_table()
 init_users_table()

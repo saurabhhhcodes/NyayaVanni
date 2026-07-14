@@ -61,11 +61,13 @@ from ..services.auth_service import (
     force_reset_password,
     get_user_by_id,
     register_user,
+    request_2fa_code,
     request_password_reset,
     reset_password_with_token,
     send_verification_email,
     update_avatar_url,
     user_requires_password_reset,
+    verify_2fa_code,
     verify_email,
 )
 from ..services.storage_service import (
@@ -518,6 +520,42 @@ async def upload_avatar(request: Request, file: UploadFile = File(...)):
     return {"status": "ok", "avatar_url": f"/uploads/avatars/{avatar_filename}"}
 
 
+# ---------------------------------------------------------------------------
+# 2FA endpoints (rate-limited)
+# ---------------------------------------------------------------------------
+
+
+class TwoFARequest(BaseModel):
+    code: str = Field(..., min_length=6, max_length=6)
+
+
+@api_router.post("/auth/2fa/request")
+@limiter.limit("3/minute")
+async def request_2fa(request: Request):
+    session_id = require_session_id(request)
+    user_id = get_session_user_id(session_id)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    code = request_2fa_code(user_id)
+    if not code:
+        raise HTTPException(status_code=500, detail="Failed to generate 2FA code")
+    user_email = get_user_by_id(user_id)["email"]
+    logger.info(f"2FA code for {user_email}: {code}")
+    return {"status": "ok", "message": "2FA code sent to your email"}
+
+
+@api_router.post("/auth/2fa/verify")
+@limiter.limit("5/minute")
+async def verify_2fa(request: Request, body: TwoFARequest):
+    session_id = require_session_id(request)
+    user_id = get_session_user_id(session_id)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    if not verify_2fa_code(user_id, body.code):
+        raise HTTPException(status_code=400, detail="Invalid or expired 2FA code")
+    return {"status": "ok", "message": "2FA verification successful"}
+
+
 @api_router.post("/contact")
 @limiter.limit(CONTACT_RATE_LIMIT)
 async def contact_us(request: Request, body: ContactRequest):
@@ -660,7 +698,7 @@ async def upload_document(request: Request, file: UploadFile = File(...)):
                 detail="An internal error occurred while saving the file.",
             )
 
-        save_document_record(session_id, doc_id, filename, local_path)
+        save_document_record(session_id, doc_id, safe_filename, local_path)
         return {"documentId": doc_id, "message": "Uploaded successfully"}
 
     except HTTPException as http_err:
