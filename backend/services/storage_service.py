@@ -178,9 +178,14 @@ def _ensure_sessions_table(cursor):
             name TEXT NOT NULL,
             email TEXT NOT NULL,
             phone TEXT,
+            role TEXT NOT NULL DEFAULT 'user',
             updated_at TEXT NOT NULL
         )
     """)
+    cursor.execute("PRAGMA table_info(profiles)")
+    profile_cols = {row[1] for row in cursor.fetchall()}
+    if "role" not in profile_cols:
+        cursor.execute("ALTER TABLE profiles ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS otp_codes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -300,7 +305,7 @@ def cleanup_expired_sessions_once() -> int:
 PASSWORD_RESET_TTL = timedelta(hours=1)
 
 
-def store_password_reset_token(email: str) -> Optional[str]:
+def store_password_reset_token(email: str) -> Optional[tuple]:
     token = str(uuid.uuid4())
     token_hash = hashlib.sha256(token.encode()).hexdigest()
     now = datetime.now(timezone.utc)
@@ -314,7 +319,7 @@ def store_password_reset_token(email: str) -> Optional[str]:
             (token_hash, email, now.isoformat(), expires_at.isoformat()),
         )
         conn.commit()
-        return token
+        return token, expires_at.isoformat()
     except Exception as e:
         if conn:
             conn.rollback()
@@ -656,15 +661,15 @@ def get_cached_analysis(doc_id: str, session_id: str, language: str) -> Optional
 OTP_TTL = timedelta(minutes=10)
 
 
-def store_profile(session_id: str, name: str, email: str, phone: Optional[str]) -> bool:
+def store_profile(session_id: str, name: str, email: str, phone: Optional[str], role: str = "user") -> bool:
     conn = None
     try:
         conn = _connect_db()
         cursor = conn.cursor()
         now = datetime.now(timezone.utc).isoformat()
         cursor.execute(
-            "INSERT OR REPLACE INTO profiles (session_id, name, email, phone, updated_at) VALUES (?, ?, ?, ?, ?)",
-            (session_id, name, email, phone, now),
+            "INSERT OR REPLACE INTO profiles (session_id, name, email, phone, role, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (session_id, name, email, phone, role, now),
         )
         conn.commit()
         return True
@@ -685,7 +690,7 @@ def get_profile(session_id: str) -> Optional[dict]:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT name, email, phone, updated_at FROM profiles WHERE session_id = ?",
+            "SELECT name, email, phone, role, updated_at FROM profiles WHERE session_id = ?",
             (session_id,),
         )
         row = cursor.fetchone()

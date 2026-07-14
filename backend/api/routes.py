@@ -1,4 +1,5 @@
 import asyncio
+import html
 import io
 import json
 import logging
@@ -65,6 +66,7 @@ from ..services.storage_service import (
     delete_document_and_cache,
     get_cached_analysis,
     get_document_record,
+    get_profile,
     invalidate_session,
     mark_password_reset_token_used,
     save_cached_analysis,
@@ -151,6 +153,26 @@ def require_document_owner(document_id: str, session_id: str) -> dict:
     return record
 
 
+def require_admin_role(request: Request) -> str:
+    """Extract session and verify the user has an admin role.
+
+    Args:
+        request: The incoming HTTP request.
+
+    Returns:
+        str: The validated session ID.
+
+    Raises:
+        HTTPException 401: If the session_id cookie is missing or invalid.
+        HTTPException 403: If the session does not have admin role.
+    """
+    session_id = require_session_id(request)
+    profile = get_profile(session_id)
+    if not profile or profile.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return session_id
+
+
 def _validate_upload_file(file: UploadFile, raw_bytes: bytes):
     """Validate file size and content type before processing.
 
@@ -234,12 +256,16 @@ async def contact_us(request: Request, body: ContactRequest):
     Raises:
         HTTPException 429: If the rate limit is exceeded.
     """
+    safe_name = html.escape(body.name.strip())
+    safe_email = html.escape(body.email.strip())
+    safe_subject = html.escape(body.subject.strip())
+    safe_message = html.escape(body.message.strip())
     logger.info(
         "Contact submission from %s: name=%s email=%s subject=%s",
         request.client.host if request.client else "unknown",
-        body.name,
-        body.email,
-        body.subject,
+        safe_name,
+        safe_email,
+        safe_subject,
     )
     return {
         "status": "ok",
@@ -270,7 +296,7 @@ async def create_session(request: Request, response: Response):
             key="session_id",
             value=session_id,
             httponly=True,
-            samesite="lax",
+            samesite="strict",
             secure=session_secure,
             max_age=30 * 24 * 60 * 60,  # 30 days
         )
@@ -296,7 +322,7 @@ async def logout(request: Request, response: Response):
     response.delete_cookie(
         key="session_id",
         httponly=True,
-        samesite="lax",
+        samesite="strict",
         secure=session_secure,
     )
     return {"status": "Logged out"}
@@ -362,16 +388,19 @@ async def forgot_password(request: Request, body: ForgotPasswordRequest):
     Always returns success to prevent email enumeration.
     """
     _log_access(request, "forgot-password")
-    token = store_password_reset_token(body.email)
-    if token:
+    result = store_password_reset_token(body.email)
+    if result:
+        token, expires_at = result
         logger.info(
-            "Password reset token generated for %s (dev mode — token: %s)",
+            "Password reset token generated for %s (dev mode — token: %s, expires_at: %s)",
             body.email,
             token,
+            expires_at,
         )
     return {
         "status": "ok",
         "message": "If an account exists with that email, password reset instructions have been sent.",
+        "expires_at": result[1] if result else None,
     }
 
 
