@@ -60,7 +60,13 @@ from ..services.auth_service import (
     force_reset_password,
     get_user_by_id,
     register_user,
+    send_verification_email,
     user_requires_password_reset,
+    verify_email,
+)
+from ..services.storage_service import (
+    get_session_user_id,
+    update_session_user_id,
 )
 from ..services.storage_service import (
     DB_PATH as STORAGE_DB_PATH,
@@ -243,8 +249,9 @@ async def get_csrf_token(request: Request):
             httponly=True,
             samesite="strict",
             secure=session_secure,
-            max_age=30 * 24 * 60 * 60,
+            max_age=24 * 60 * 60,
         )
+        update_session_user_id(session_id, None)
     token = _generate_csrf_token(session_id)
     return {"csrf_token": token}
 
@@ -283,6 +290,10 @@ async def register(request: Request, body: RegisterRequest):
     )
     if not user:
         raise HTTPException(status_code=409, detail="Email already registered")
+    update_session_user_id(session_id, user["user_id"])
+    verification_token = user.pop("verification_token", None)
+    if verification_token:
+        send_verification_email(user["email"], verification_token)
     log_action(
         STORAGE_DB_PATH,
         "user_register",
@@ -301,7 +312,11 @@ async def login(request: Request, body: LoginRequest):
     session_id = require_session_id(request)
     user = authenticate_user(body.email, body.password)
     if not user:
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid email or password. If you recently registered, please verify your email first.",
+        )
+    update_session_user_id(session_id, user["user_id"])
     log_action(
         STORAGE_DB_PATH,
         "user_login",
@@ -324,8 +339,9 @@ async def login(request: Request, body: LoginRequest):
 @limiter.limit("5/minute")
 async def change_password_endpoint(request: Request, body: ChangePasswordRequest):
     session_id = require_session_id(request)
-    user = get_user_by_id(session_id)
-    user_id = user["user_id"] if user else session_id
+    user_id = get_session_user_id(session_id)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="User not authenticated")
     success, message = change_password(user_id, body.current_password, body.new_password)
     if not success:
         raise HTTPException(status_code=400, detail=message)
@@ -345,8 +361,9 @@ async def change_password_endpoint(request: Request, body: ChangePasswordRequest
 @limiter.limit("3/minute")
 async def force_reset_password_endpoint(request: Request, body: ChangePasswordRequest):
     session_id = require_session_id(request)
-    user = get_user_by_id(session_id)
-    user_id = user["user_id"] if user else session_id
+    user_id = get_session_user_id(session_id)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="User not authenticated")
     success, message = force_reset_password(user_id, body.new_password)
     if not success:
         raise HTTPException(status_code=400, detail=message)
@@ -362,10 +379,28 @@ async def force_reset_password_endpoint(request: Request, body: ChangePasswordRe
     return {"status": "ok", "message": message}
 
 
+@api_router.get("/auth/verify-email")
+@limiter.limit("10/minute")
+async def verify_email_endpoint(request: Request, token: str):
+    """Verify a user's email address using the token sent at registration."""
+    if not token or not token.strip():
+        raise HTTPException(status_code=400, detail="Verification token is required")
+    success = verify_email(token.strip())
+    if not success:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid or expired verification token. Please register again.",
+        )
+    return {"status": "ok", "message": "Email verified successfully. You can now log in."}
+
+
 @api_router.get("/auth/me")
 async def get_current_user(request: Request):
     session_id = require_session_id(request)
-    user = get_user_by_id(session_id)
+    user_id = get_session_user_id(session_id)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    user = get_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
     return user
@@ -436,7 +471,7 @@ async def create_session(request: Request, response: Response):
             httponly=True,
             samesite="strict",
             secure=session_secure,
-            max_age=30 * 24 * 60 * 60,  # 30 days
+            max_age=24 * 60 * 60,  # 24 hours
         )
     return {"status": "Session active", "sessionId": session_id}
 
