@@ -22,7 +22,7 @@ export function useSSEChat() {
       });
 
       try {
-        const response = await fetch(`${apiUrl}/api/chat/stream?${params}`, {
+        const response = await fetch(`${apiUrl}/api/v1/chat/stream?${params}`, {
           method: 'GET',
           credentials: 'include',
           signal: controller.signal,

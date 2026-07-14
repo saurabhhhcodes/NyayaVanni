@@ -18,6 +18,6 @@ def test_session_rate_limit():
     last_response = None
 
     for _ in range(15):
-        last_response = client.get("/api/session")
+        last_response = client.get("/api/v1/session")
 
     assert last_response.status_code == 429

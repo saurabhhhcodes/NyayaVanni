@@ -75,7 +75,7 @@ export default function LandingPage() {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
       await ensureSessionId(apiUrl);
 
-      const response = await fetch(`${apiUrl}/api/upload`, {
+      const response = await fetch(`${apiUrl}/api/v1/upload`, {
         method: 'POST',
         credentials: 'include',
         body: formData,

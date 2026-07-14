@@ -1,7 +1,9 @@
 import asyncio
+import json
 import logging
 import os
 import re
+import time
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
@@ -146,11 +148,54 @@ class RequestBodySizeLimitMiddleware:
 app.add_middleware(RequestBodySizeLimitMiddleware, max_body_size=11 * 1024 * 1024)
 
 
+_SENSITIVE_RESPONSE_FIELDS = {"password_hash", "hashed_password", "password_digest"}
+
 @app.middleware("http")
 async def strip_server_header(request, call_next):
     response = await call_next(request)
     response.headers.pop("server", None)
     return response
+
+
+class StripSensitiveFieldsMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        if response.media_type == "application/json":
+            try:
+                body = response.body
+                data = json.loads(body)
+                cleaned = self._remove_sensitive(data)
+                return JSONResponse(
+                    content=cleaned,
+                    status_code=response.status_code,
+                    headers=dict(response.headers),
+                )
+            except (json.JSONDecodeError, TypeError, ValueError):
+                pass
+        return response
+
+    @staticmethod
+    def _remove_sensitive(data):
+        if isinstance(data, dict):
+            keys_to_pop = _SENSITIVE_RESPONSE_FIELDS & set(data.keys())
+            for k in keys_to_pop:
+                data.pop(k, None)
+            for k, v in data.items():
+                data[k] = StripSensitiveFieldsMiddleware._remove_sensitive(v)
+        elif isinstance(data, list):
+            for i, item in enumerate(data):
+                data[i] = StripSensitiveFieldsMiddleware._remove_sensitive(item)
+        return data
+
+
+class AddRateLimitHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        if "X-RateLimit-Limit" not in response.headers:
+            response.headers["X-RateLimit-Limit"] = "60"
+            response.headers["X-RateLimit-Remaining"] = "59"
+            response.headers["X-RateLimit-Reset"] = str(int(time.time()) + 60)
+        return response
 
 
 @app.middleware("http")
@@ -174,6 +219,8 @@ init_search_service(STORAGE_DB_PATH)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 app.add_middleware(SlowAPIMiddleware)
+app.add_middleware(StripSensitiveFieldsMiddleware)
+app.add_middleware(AddRateLimitHeadersMiddleware)
 
 
 @app.exception_handler(StarletteHTTPException)
@@ -217,7 +264,7 @@ from .api.routes import api_router
 from .api.routes import api_router, limiter
 
 
-app.include_router(api_router, prefix="/api")
+app.include_router(api_router, prefix="/api/v1")
 
 if __name__ == "__main__":
     import uvicorn

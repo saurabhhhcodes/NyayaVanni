@@ -140,7 +140,7 @@ export default function GeneralChat() {
 
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-      const response = await fetch(`${apiUrl}/api/chat/general`, {
+      const response = await fetch(`${apiUrl}/api/v1/chat/general`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

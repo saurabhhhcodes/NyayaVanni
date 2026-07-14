@@ -450,7 +450,7 @@ export default function VersionDiff() {
     form.append('new_document', newFile);
 
     try {
-      const { data } = await axios.post(`${API_BASE}/api/diff-analysis`, form, {
+      const { data } = await axios.post(`${API_BASE}/api/v1/diff-analysis`, form, {
         headers: HEADERS.CONTENT_TYPE_MULTIPART,
         timeout: 120000,
       });

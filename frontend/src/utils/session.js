@@ -4,7 +4,7 @@ export async function ensureSessionId(apiUrl) {
   if (sessionInitialized) return;
 
   try {
-    const response = await fetch(`${apiUrl}/api/session`, {
+    const response = await fetch(`${apiUrl}/api/v1/session`, {
       method: 'GET',
       credentials: 'include',
     });
@@ -18,7 +18,7 @@ export async function ensureSessionId(apiUrl) {
 
 export async function logoutSession(apiUrl) {
   try {
-    await fetch(`${apiUrl}/api/logout`, {
+    await fetch(`${apiUrl}/api/v1/logout`, {
       method: 'POST',
       credentials: 'include',
     });
