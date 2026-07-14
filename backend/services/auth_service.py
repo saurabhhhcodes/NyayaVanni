@@ -52,6 +52,8 @@ def init_users_table() -> None:
             cursor.execute(f"ALTER TABLE {USERS_TABLE} ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0")
         if "verification_token" not in existing_cols:
             cursor.execute(f"ALTER TABLE {USERS_TABLE} ADD COLUMN verification_token TEXT")
+        if "avatar_url" not in existing_cols:
+            cursor.execute(f"ALTER TABLE {USERS_TABLE} ADD COLUMN avatar_url TEXT")
         conn.commit()
         logger.info("Users table initialized")
     except Exception as e:
@@ -202,6 +204,7 @@ def authenticate_user(email: str, password: str) -> Optional[dict[str, Any]]:
             "role": user["role"],
             "must_reset_password": bool(user["must_reset_password"]),
             "is_active": bool(user["is_active"]),
+            "avatar_url": user.get("avatar_url"),
         }
     except Exception as e:
         logger.error(f"Authentication failed: {e}")
@@ -283,7 +286,7 @@ def get_user_by_id(user_id: str) -> Optional[dict[str, Any]]:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         cursor.execute(
-            f"SELECT user_id, email, display_name, role, must_reset_password, is_active FROM {USERS_TABLE} WHERE user_id = ?",
+            f"SELECT user_id, email, display_name, role, must_reset_password, is_active, avatar_url FROM {USERS_TABLE} WHERE user_id = ?",
             (user_id,),
         )
         row = cursor.fetchone()
@@ -291,6 +294,27 @@ def get_user_by_id(user_id: str) -> Optional[dict[str, Any]]:
     except Exception as e:
         logger.error(f"Failed to get user {user_id}: {e}")
         return None
+    finally:
+        if conn:
+            conn.close()
+
+
+def update_avatar_url(user_id: str, avatar_url: str) -> bool:
+    conn = None
+    try:
+        conn = connect_db(STORAGE_DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(
+            f"UPDATE {USERS_TABLE} SET avatar_url = ?, updated_at = ? WHERE user_id = ?",
+            (avatar_url, datetime.now(timezone.utc).isoformat(), user_id),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Failed to update avatar URL for user {user_id}: {e}")
+        if conn:
+            conn.rollback()
+        return False
     finally:
         if conn:
             conn.close()

@@ -62,6 +62,7 @@ from ..services.auth_service import (
     get_user_by_id,
     register_user,
     send_verification_email,
+    update_avatar_url,
     user_requires_password_reset,
     verify_email,
 )
@@ -315,7 +316,7 @@ async def login(request: Request, body: LoginRequest):
     if not user:
         raise HTTPException(
             status_code=401,
-            detail="Invalid email or password. If you recently registered, please verify your email first.",
+            detail="Invalid email or password.",
         )
     update_session_user_id(session_id, user["user_id"])
     log_action(
@@ -405,6 +406,57 @@ async def get_current_user(request: Request):
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
     return user
+
+
+AVATAR_MAX_SIZE = 2 * 1024 * 1024  # 2 MB
+ALLOWED_AVATAR_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+
+
+@api_router.post("/auth/avatar")
+@limiter.limit("5/minute")
+async def upload_avatar(request: Request, file: UploadFile = File(...)):
+    session_id = require_session_id(request)
+    user_id = get_session_user_id(session_id)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+
+    if not file.content_type or file.content_type not in ALLOWED_AVATAR_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported image format. Allowed: JPEG, PNG, GIF, WebP.",
+        )
+
+    raw_bytes = await read_upload_with_size_limit(file, AVATAR_MAX_SIZE)
+
+    avatar_dir = os.path.join(UPLOAD_DIR, "avatars")
+    os.makedirs(avatar_dir, exist_ok=True)
+    ext = file.filename.split(".")[-1] if file.filename else "png"
+    avatar_filename = f"{user_id}.{ext}"
+    avatar_path = os.path.join(avatar_dir, avatar_filename)
+
+    try:
+        with open(avatar_path, "wb") as f:
+            f.write(raw_bytes)
+    except Exception as e:
+        logger.error(f"Avatar save failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="An internal error occurred while saving the avatar.",
+        )
+
+    update_avatar_url(user_id, f"/uploads/avatars/{avatar_filename}")
+
+    log_action(
+        STORAGE_DB_PATH,
+        "avatar_upload",
+        "user",
+        user_id,
+        session_id,
+        None,
+        request.client.host if request.client else None,
+    )
+
+    return {"status": "ok", "avatar_url": f"/uploads/avatars/{avatar_filename}"}
 
 
 @api_router.post("/contact")
@@ -1260,7 +1312,7 @@ async def delete_document(document_id: str, request: Request):
     session_id = require_session_id(request)
     require_document_owner(document_id, session_id)
 
-    deleted = delete_document_and_cache(document_id)
+    deleted = delete_document_and_cache(document_id, session_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Document not found")
 

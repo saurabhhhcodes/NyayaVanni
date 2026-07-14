@@ -189,6 +189,7 @@ def create_session_id() -> str:
     conn = None
     try:
         conn = _connect_db()
+        conn.execute("BEGIN IMMEDIATE")
         cursor = conn.cursor()
         cursor.execute(
             "INSERT OR IGNORE INTO sessions (session_id, created_at, last_used_at, expires_at) VALUES (?, ?, ?, ?)",
@@ -360,9 +361,17 @@ def get_document_record(doc_id: str) -> Optional[dict]:
             conn.close()
 
 
-def delete_document_and_cache(doc_id: str) -> bool:
+def delete_document_and_cache(doc_id: str, session_id: Optional[str] = None) -> bool:
     record = get_document_record(doc_id)
     if not record:
+        return False
+
+    if session_id is not None and record.get("session_id") != session_id:
+        logger.warning(
+            "Delete denied for document %s: session %s does not own document",
+            doc_id,
+            session_id,
+        )
         return False
 
     local_path = record.get("local_path")
