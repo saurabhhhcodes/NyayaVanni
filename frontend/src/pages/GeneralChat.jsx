@@ -193,7 +193,7 @@ export default function GeneralChat() {
         window.location.hostname !== 'localhost'
       ) {
         errorMessage =
-          'Configuration Error: The app is trying to connect to a local server (localhost) while deployed. Please set the VITE_API_URL environment variable in your Vercel dashboard.';
+          'Configuration Error: The app is trying to connect to a local server while deployed.';
       }
 
       setChatHistory([

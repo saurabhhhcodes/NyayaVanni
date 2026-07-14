@@ -43,7 +43,7 @@ from ..models.schemas import (
 )
 from ..services.confidence_service import ConfidenceService
 from ..services.document_classifier import classify_document
-from ..services.file_validation import detect_actual_mime, validate_file_magic_bytes
+from ..services.file_validation import ALLOWED_MIME_TYPES, detect_actual_mime, validate_file_magic_bytes
 from ..services.gemini_service import (
     GEMINI_TIMEOUT,
     analyze_document_with_gemini,
@@ -177,10 +177,10 @@ def _validate_upload_file(file: UploadFile, raw_bytes: bytes):
             detail="Unsupported file format. Only PDF, PNG, JPG, JPEG, and DOCX are allowed.",
         )
 
-    if file.content_type and file.content_type not in ALLOWED_MIME_TYPES:
+    if not file.content_type or file.content_type not in ALLOWED_MIME_TYPES:
         raise HTTPException(
             status_code=400,
-            detail="Unsupported file content type. Only PDF, DOCX, and image files are allowed.",
+            detail="Unsupported or missing file content type. Only PDF, DOCX, and image files are allowed.",
         )
 
     if not validate_file_magic_bytes(raw_bytes, ext):
@@ -439,20 +439,6 @@ async def upload_document(request: Request, file: UploadFile = File(...)):
         if not safe_filename:
             safe_filename = "upload"
 
-        ext = safe_filename.split(".")[-1].lower() if "." in safe_filename else ""
-
-        if ext not in ALLOWED_EXTENSIONS:
-            raise HTTPException(
-                status_code=400,
-                detail="Unsupported file format. Only PDF, PNG, JPG, JPEG, and DOCX are allowed.",
-            )
-
-        if file.content_type and file.content_type not in ALLOWED_MIME_TYPES:
-            raise HTTPException(
-                status_code=400,
-                detail="Unsupported file content type. Only PDF, DOCX, and image files are allowed.",
-            )
-
         try:
             raw_bytes = await asyncio.wait_for(file.read(), timeout=30.0)
         except asyncio.TimeoutError:
@@ -461,26 +447,10 @@ async def upload_document(request: Request, file: UploadFile = File(...)):
                 detail="Upload timed out. Please try again with a smaller file or a faster connection.",
             )
 
-        if len(raw_bytes) > MAX_FILE_SIZE:
-            raise HTTPException(
-                status_code=413,
-                detail="File size exceeds the maximum allowed limit of 10MB.",
-            )
-
-        if not validate_file_magic_bytes(raw_bytes, ext):
-            actual_mime = detect_actual_mime(raw_bytes)
-            logger.warning(
-                "MIME type mismatch: claimed=%s, detected=%s, ext=%s",
-                file.content_type,
-                actual_mime,
-                ext,
-            )
-            raise HTTPException(
-                status_code=400,
-                detail="File content does not match the claimed file type. Upload rejected.",
-            )
+        _validate_upload_file(file, raw_bytes)
 
         doc_id = str(uuid.uuid4())
+        ext = safe_filename.split(".")[-1].lower() if "." in safe_filename else ""
         local_path = os.path.normpath(os.path.join(UPLOAD_DIR, f"{doc_id}.{ext}"))
         if not local_path.startswith(os.path.normpath(UPLOAD_DIR)):
             raise HTTPException(
@@ -1076,9 +1046,13 @@ def search_documents_endpoint(
         _log_access(request, "search", session_id, f"q={q[:50]}")
 
         if not q or not q.strip() or len(q.strip()) < 2:
-            raise HTTPException(
-                status_code=400, detail="Search query must be at least 2 characters"
-            )
+            return {
+                "results": [],
+                "total_count": 0,
+                "page": page if isinstance(page, int) and page >= 1 else 1,
+                "page_size": page_size if isinstance(page_size, int) and 1 <= page_size <= 100 else 10,
+                "from_cache": False,
+            }
 
         if not isinstance(page, int) or page < 1:
             page = 1

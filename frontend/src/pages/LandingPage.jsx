@@ -94,7 +94,7 @@ export default function LandingPage() {
         window.location.hostname !== 'localhost'
       ) {
         alert(
-          'Configuration Error: The app is trying to connect to a local server (localhost) while deployed. Please set the VITE_API_URL environment variable in your Vercel dashboard.'
+          'Configuration Error: The app is trying to connect to a local server while deployed.'
         );
       } else {
         alert(
@@ -141,6 +141,7 @@ export default function LandingPage() {
             </button>
             <button
               onClick={async () => {
+                if (!window.confirm('Are you sure you want to logout?')) return;
                 const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
                 await logoutSession(apiUrl);
                 window.location.reload();

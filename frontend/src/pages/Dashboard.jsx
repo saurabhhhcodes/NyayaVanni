@@ -358,7 +358,7 @@ export default function Dashboard() {
           window.location.hostname !== 'localhost'
         ) {
           msg =
-            'Configuration Error: API URL is set to localhost in production. Please set VITE_API_URL in Vercel.';
+            'Configuration Error: API URL is set to localhost in production.';
         }
         setError(msg);
       } finally {
@@ -439,7 +439,7 @@ export default function Dashboard() {
         window.location.hostname !== 'localhost'
       ) {
         msg =
-          'Configuration Error: API URL is still set to localhost. Fix this in Vercel Environment Variables.';
+          'Configuration Error: API URL is still set to localhost.';
       }
 
       setChatHistory([...newHistory, { role: 'assistant', message: msg }]);
@@ -582,6 +582,7 @@ export default function Dashboard() {
             <ThemeToggle />
             <button
               onClick={async () => {
+                if (!window.confirm('Are you sure you want to logout?')) return;
                 const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
                 await logoutSession(apiUrl);
                 navigate('/');
@@ -965,7 +966,7 @@ export default function Dashboard() {
                       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
                       let msg = 'This is a fallback response. The backend might not be running correctly.';
                       if (apiUrl.includes('localhost') && window.location.hostname !== 'localhost') {
-                        msg = 'Configuration Error: API URL is still set to localhost. Fix this in Vercel Environment Variables.';
+                        msg = 'Configuration Error: API URL is still set to localhost.';
                       }
                       setChatHistory([...newHistory, { role: 'assistant', message: msg }]);
                       setChatLoading(false);

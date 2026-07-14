@@ -31,6 +31,14 @@ MAGIC_BYTES = {
 }
 
 
+ALLOWED_MIME_TYPES = {
+    "application/pdf",
+    "image/png",
+    "image/jpeg",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
+
+
 def validate_file_magic_bytes(file_bytes: bytes, expected_ext: str) -> bool:
     if expected_ext not in MAGIC_BYTES:
         logger.warning("No magic bytes configured for extension: %s", expected_ext)
