@@ -54,7 +54,7 @@ from ..services.search_service import (
     remove_document_from_index,
     search_documents,
 )
-from ..services.audit_log_service import log_action
+from ..services.audit_log_service import get_audit_logs, log_action
 from ..services.auth_service import (
     authenticate_user,
     change_password,
@@ -218,9 +218,6 @@ class DocumentGenerationRequest(BaseModel):
 def _get_client_ip(request: Request) -> str:
     if request.client:
         return request.client.host
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
     return ""
 
 
@@ -514,7 +511,22 @@ async def upload_avatar(request: Request, file: UploadFile = File(...)):
 
     avatar_dir = os.path.join(UPLOAD_DIR, "avatars")
     os.makedirs(avatar_dir, exist_ok=True)
-    ext = file.filename.split(".")[-1] if file.filename else "png"
+
+    # Validate filename to prevent path traversal
+    raw_filename = (file.filename or "").strip()
+    if not raw_filename:
+        raise HTTPException(
+            status_code=400, detail="Uploaded file must have a valid filename."
+        )
+    if ".." in raw_filename or raw_filename.startswith("/"):
+        raise HTTPException(
+            status_code=400, detail="Invalid filename: path traversal detected."
+        )
+    safe_base = os.path.basename(raw_filename)
+    ext = safe_base.split(".")[-1].lower() if "." in safe_base else ""
+    ext = "".join(ch for ch in ext if ch.isalnum())
+    if not ext:
+        ext = "png"
     avatar_filename = f"{user_id}.{ext}"
     avatar_path = os.path.join(avatar_dir, avatar_filename)
 
@@ -689,6 +701,12 @@ async def upload_document(request: Request, file: UploadFile = File(...)):
             raise HTTPException(
                 status_code=400,
                 detail="Unsupported file format. Only PDF, PNG, JPG, JPEG, and DOCX are allowed.",
+            )
+
+        if not file.content_type or file.content_type not in ALLOWED_MIME_TYPES:
+            raise HTTPException(
+                status_code=400,
+                detail="Unsupported media type. Allowed: PDF, PNG, JPEG, and DOCX.",
             )
 
         raw_bytes = await read_upload_with_size_limit(file, MAX_FILE_SIZE)
@@ -1579,6 +1597,52 @@ async def delete_document_history_endpoint(
     )
 
     return {"deleted": True, "deleted_count": deleted}
+
+
+@api_router.get("/audit-logs")
+@limiter.limit("30/minute")
+async def get_audit_logs_endpoint(
+    request: Request,
+    limit: int = 100,
+    offset: int = 0,
+    action: str = None,
+    resource_type: str = None,
+    resource_id: str = None,
+):
+    """Retrieve audit log entries with pagination and optional filters.
+
+    Args:
+        request: The incoming HTTP request.
+        limit: Maximum number of entries to return (default 100).
+        offset: Number of entries to skip (default 0).
+        action: Optional action type filter.
+        resource_type: Optional resource type filter.
+        resource_id: Optional resource ID filter.
+
+    Returns:
+        dict: A list of audit log entries.
+    """
+    session_id = require_session_id(request)
+    user_id = get_session_user_id(session_id)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+
+    if limit < 1:
+        limit = 100
+    if limit > 1000:
+        limit = 1000
+    if offset < 0:
+        offset = 0
+
+    logs = get_audit_logs(
+        STORAGE_DB_PATH,
+        action=action,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        limit=limit,
+        offset=offset,
+    )
+    return {"logs": logs, "limit": limit, "offset": offset, "count": len(logs)}
 
 
 @api_router.get("/search")
