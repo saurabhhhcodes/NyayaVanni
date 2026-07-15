@@ -5,6 +5,7 @@ import io
 import json
 import logging
 import os
+import re
 import secrets
 import uuid
 
@@ -73,6 +74,7 @@ from ..services.auth_service import (
 from ..services.storage_service import (
     get_session_user_id,
     update_session_user_id,
+    update_session_user_agent,
 )
 from ..services.storage_service import (
     DB_PATH as STORAGE_DB_PATH,
@@ -215,6 +217,28 @@ class DocumentGenerationRequest(BaseModel):
     jurisdiction: str = Field(..., max_length=200)
 
 
+_TAG_RE = re.compile(r"<[^>]*>", re.IGNORECASE)
+_SCRIPT_TAG_RE = re.compile(
+    r"<\s*(script|iframe|object|embed|form|input|textarea|select|button|style|link|meta|base)"
+    r"\s*[^>]*>.*?<\s*/\s*\1\s*>"
+    r"|<\s*(script|iframe|object|embed|form|input|textarea|select|button|style|link|meta|base)\s*[^>]*/?>",
+    re.IGNORECASE | re.DOTALL,
+)
+_ONATTR_RE = re.compile(r"\bon\w+\s*=", re.IGNORECASE)
+_JAVASCRIPT_RE = re.compile(r"javascript\s*:", re.IGNORECASE)
+
+
+def sanitize_text(value: str) -> str:
+    if not isinstance(value, str):
+        return value
+    result = _SCRIPT_TAG_RE.sub("", value)
+    result = _TAG_RE.sub("", result)
+    result = _ONATTR_RE.sub(" x-disabled=", result)
+    result = _JAVASCRIPT_RE.sub("", result)
+    result = result.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return result
+
+
 def _get_client_ip(request: Request) -> str:
     if request.client:
         return request.client.host
@@ -241,7 +265,8 @@ def require_session_id(request: Request) -> str:
     if not session_id:
         raise HTTPException(status_code=401, detail="Missing session_id cookie or header")
     ip = _get_client_ip(request)
-    if not validate_session(session_id, ip):
+    ua = request.headers.get("User-Agent", "")
+    if not validate_session(session_id, ip, ua):
         raise HTTPException(status_code=401, detail="Invalid or expired session")
     return session_id
 
@@ -281,7 +306,8 @@ async def get_csrf_token(request: Request):
     if not session_id:
         session_id = request.headers.get("x-session-id")
     if not session_id:
-        session_id = create_session_id()
+        ua = request.headers.get("User-Agent", "")
+        session_id = create_session_id(ip_address=_get_client_ip(request), user_agent=ua)
         response = Response()
         session_secure = os.getenv("SESSION_COOKIE_SECURE", "true").lower() == "true"
         response.set_cookie(
@@ -361,6 +387,9 @@ async def login(request: Request, body: LoginRequest):
     client_ip = _get_client_ip(request)
     if client_ip:
         update_session_ip(session_id, client_ip)
+    ua = request.headers.get("User-Agent", "")
+    if ua:
+        update_session_user_agent(session_id, ua)
     log_action(
         STORAGE_DB_PATH,
         "user_login",
@@ -618,12 +647,17 @@ async def contact_us(request: Request, body: ContactRequest):
             logger.warning("CSRF token validation failed for contact form")
             raise HTTPException(status_code=403, detail="Invalid CSRF token")
 
+    safe_name = sanitize_text(body.name)
+    safe_email = sanitize_text(body.email)
+    safe_subject = sanitize_text(body.subject)
+    safe_message = sanitize_text(body.message)
+
     logger.info(
         "Contact submission from %s: name=%s email=%s subject=%s",
         request.client.host if request.client else "unknown",
-        body.name,
-        body.email,
-        body.subject,
+        safe_name,
+        safe_email,
+        safe_subject,
     )
     return {
         "status": "ok",
@@ -647,8 +681,10 @@ async def create_session(request: Request, response: Response):
         HTTPException 429: If the rate limit is exceeded.
     """
     session_id = request.cookies.get("session_id")
-    if not session_id or not validate_session(session_id):
-        session_id = create_session_id()
+    ua = request.headers.get("User-Agent", "")
+    ip = _get_client_ip(request)
+    if not session_id or not validate_session(session_id, ip, ua):
+        session_id = create_session_id(ip_address=ip, user_agent=ua)
         session_secure = os.getenv("SESSION_COOKIE_SECURE", "true").lower() == "true"
         response.set_cookie(
             key="session_id",

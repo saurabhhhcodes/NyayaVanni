@@ -578,5 +578,44 @@ def verify_2fa_code(user_id: str, code: str) -> bool:
             conn.close()
 
 
+DEFAULT_ADMIN_EMAIL = "admin@nyayavanni.com"
+DEFAULT_ADMIN_PASSWORD = "admin123"
+
+
+def seed_default_admin() -> None:
+    conn = None
+    try:
+        conn = connect_db(STORAGE_DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(
+            f"SELECT user_id FROM {USERS_TABLE} WHERE email = ?",
+            (DEFAULT_ADMIN_EMAIL,),
+        )
+        if cursor.fetchone():
+            return
+        user_id = "usr_" + secrets.token_hex(16)
+        password_hash = _hash_password(DEFAULT_ADMIN_PASSWORD)
+        now_iso = datetime.now(timezone.utc).isoformat()
+        verification_token = _generate_verification_token()
+        cursor.execute(
+            f"""
+            INSERT INTO {USERS_TABLE}
+            (user_id, email, password_hash, display_name, role, must_reset_password, is_active, email_verified, verification_token, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (user_id, DEFAULT_ADMIN_EMAIL, password_hash, "Admin", "admin", 1, 1, 1, verification_token, now_iso, now_iso),
+        )
+        conn.commit()
+        logger.info("Default admin seeded with must_reset_password=1")
+    except Exception as e:
+        logger.error(f"Failed to seed default admin: {e}")
+        if conn:
+            conn.rollback()
+    finally:
+        if conn:
+            conn.close()
+
+
 init_two_factor_table()
 init_users_table()
+seed_default_admin()

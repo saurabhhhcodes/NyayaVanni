@@ -176,6 +176,8 @@ def _ensure_sessions_table(cursor):
         cursor.execute("ALTER TABLE sessions ADD COLUMN user_id TEXT")
     if "ip_address" not in cols:
         cursor.execute("ALTER TABLE sessions ADD COLUMN ip_address TEXT")
+    if "user_agent" not in cols:
+        cursor.execute("ALTER TABLE sessions ADD COLUMN user_agent TEXT")
     if "created_at" not in cols:
         cursor.execute("ALTER TABLE sessions ADD COLUMN created_at TEXT")
     if "last_used_at" not in cols:
@@ -187,7 +189,7 @@ def _ensure_sessions_table(cursor):
 SESSION_TTL = timedelta(hours=24)
 
 
-def create_session_id(ip_address: str = "") -> str:
+def create_session_id(ip_address: str = "", user_agent: str = "") -> str:
     session_id = secrets.token_hex(32)
     now = datetime.now(timezone.utc)
     expires_at = now + SESSION_TTL
@@ -197,8 +199,8 @@ def create_session_id(ip_address: str = "") -> str:
         conn.execute("BEGIN IMMEDIATE")
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT OR IGNORE INTO sessions (session_id, ip_address, created_at, last_used_at, expires_at) VALUES (?, ?, ?, ?, ?)",
-            (session_id, ip_address, now.isoformat(), now.isoformat(), expires_at.isoformat()),
+            "INSERT OR IGNORE INTO sessions (session_id, ip_address, user_agent, created_at, last_used_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (session_id, ip_address, user_agent[:512] if user_agent else "", now.isoformat(), now.isoformat(), expires_at.isoformat()),
         )
         conn.commit()
     except Exception as e:
@@ -211,7 +213,7 @@ def create_session_id(ip_address: str = "") -> str:
     return session_id
 
 
-def validate_session(session_id: str, ip_address: str = "") -> bool:
+def validate_session(session_id: str, ip_address: str = "", user_agent: str = "") -> bool:
     if not session_id or not session_id.strip():
         return False
     conn = None
@@ -219,7 +221,7 @@ def validate_session(session_id: str, ip_address: str = "") -> bool:
         conn = _connect_db()
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT expires_at, ip_address FROM sessions WHERE session_id = ?", (session_id,)
+            "SELECT expires_at, ip_address, user_agent FROM sessions WHERE session_id = ?", (session_id,)
         )
         row = cursor.fetchone()
         if not row:
@@ -235,6 +237,13 @@ def validate_session(session_id: str, ip_address: str = "") -> bool:
                 session_id, stored_ip, ip_address,
             )
             return False
+        stored_ua = row[2] if len(row) > 2 else ""
+        if stored_ua and user_agent and stored_ua != user_agent[:512]:
+            logger.warning(
+                "Session User-Agent mismatch: session=%s",
+                session_id,
+            )
+            return False
         now = datetime.now(timezone.utc).isoformat()
         cursor.execute(
             "UPDATE sessions SET last_used_at = ? WHERE session_id = ?",
@@ -244,6 +253,27 @@ def validate_session(session_id: str, ip_address: str = "") -> bool:
         return True
     except Exception as e:
         logger.error(f"Session validation failed: {e}")
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
+def update_session_user_agent(session_id: str, user_agent: str) -> bool:
+    conn = None
+    try:
+        conn = _connect_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE sessions SET user_agent = ? WHERE session_id = ?",
+            (user_agent[:512] if user_agent else "", session_id),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Failed to update session User-Agent: {e}")
+        if conn:
+            conn.rollback()
         return False
     finally:
         if conn:
