@@ -295,6 +295,7 @@ PASSWORD_RESET_RATE_LIMIT = os.getenv("PASSWORD_RESET_RATE_LIMIT", "3/hour")
 
 @api_router.post("/auth/forgot-password")
 @limiter.limit(PASSWORD_RESET_RATE_LIMIT)
+async @rate_limit(hourly=3)
 async def forgot_password(request: Request, body: ForgotPasswordRequest):
     """Request a password reset token for the given email.
 
