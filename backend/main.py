@@ -167,6 +167,7 @@ app.add_middleware(
         "Accept",
         "Origin",
     ],
+    max_age=3600,
 )
 
 

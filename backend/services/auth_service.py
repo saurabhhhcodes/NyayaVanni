@@ -319,6 +319,13 @@ def force_reset_password(user_id: str, new_password: str) -> tuple[bool, str]:
             conn.close()
 
 
+_SENSITIVE_FIELDS = {"password_hash", "verification_token"}
+
+
+def _strip_sensitive_fields(user: dict) -> dict:
+    return {k: v for k, v in user.items() if k not in _SENSITIVE_FIELDS}
+
+
 _user_cache: dict[str, dict[str, Any]] = {}
 
 
@@ -342,6 +349,7 @@ def get_user_by_id(user_id: str) -> Optional[dict[str, Any]]:
         row = cursor.fetchone()
         result = dict(row) if row else None
         if result is not None:
+            result = _strip_sensitive_fields(result)
             _user_cache[user_id] = result
         return result
     except Exception as e:
@@ -488,15 +496,13 @@ def reset_password_with_token(token: str, new_password: str) -> tuple[bool, str]
         conn = connect_db(STORAGE_DB_PATH)
         cursor = conn.cursor()
         cursor.execute(
-            f"SELECT id, user_id, expires_at, used FROM {PASSWORD_RESET_TOKENS_TABLE} WHERE token = ?",
+            f"SELECT id, user_id, expires_at FROM {PASSWORD_RESET_TOKENS_TABLE} WHERE token = ? AND used = 0",
             (token,),
         )
         row = cursor.fetchone()
         if not row:
             return False, "Invalid or expired reset token"
-        token_id, user_id, expires_at_str, used = row
-        if used:
-            return False, "Reset token has already been used"
+        token_id, user_id, expires_at_str = row
         expires_at = datetime.fromisoformat(expires_at_str)
         if expires_at < datetime.now(timezone.utc):
             return False, "Reset token has expired"
@@ -511,6 +517,7 @@ def reset_password_with_token(token: str, new_password: str) -> tuple[bool, str]
             (token_id,),
         )
         conn.commit()
+        _invalidate_user_cache(user_id)
         logger.info(f"Password reset via token for user {user_id}")
         return True, "Password reset successfully"
     except Exception as e:
@@ -731,6 +738,31 @@ def is_account_locked(email: str) -> tuple[bool, Optional[int]]:
 
 DEFAULT_ADMIN_EMAIL = "admin@nyayavanni.com"
 DEFAULT_ADMIN_PASSWORD = "admin123"
+
+
+def list_users(limit: int = 20, offset: int = 0) -> tuple[list[dict], int]:
+    conn = None
+    try:
+        conn = connect_db(STORAGE_DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute(f"SELECT COUNT(*) FROM {USERS_TABLE}")
+        total = cursor.fetchone()[0]
+
+        cursor.execute(
+            f"SELECT user_id, email, display_name, role, must_reset_password, is_active, email_verified, avatar_url, created_at, updated_at FROM {USERS_TABLE} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            (limit, offset),
+        )
+        rows = cursor.fetchall()
+        users = [_strip_sensitive_fields(dict(r)) for r in rows]
+        return users, total
+    except Exception as e:
+        logger.error(f"Failed to list users: {e}")
+        return [], 0
+    finally:
+        if conn:
+            conn.close()
 
 
 def seed_default_admin() -> None:

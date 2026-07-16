@@ -62,6 +62,7 @@ from ..services.auth_service import (
     force_reset_password,
     get_user_by_id,
     is_account_locked,
+    list_users,
     register_user,
     request_2fa_code,
     request_password_reset,
@@ -534,6 +535,32 @@ async def get_current_user(request: Request):
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
     return user
+
+
+@api_router.get("/admin/users")
+@limiter.limit("30/minute")
+async def admin_list_users(
+    request: Request,
+    limit: int = 20,
+    offset: int = 0,
+):
+    session_id = require_session_id(request)
+    user_id = get_session_user_id(session_id)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    caller = get_user_by_id(user_id)
+    if not caller or caller.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    if limit < 1:
+        limit = 20
+    if limit > 100:
+        limit = 100
+    if offset < 0:
+        offset = 0
+
+    users, total = list_users(limit=limit, offset=offset)
+    return {"users": users, "total": total, "limit": limit, "offset": offset}
 
 
 AVATAR_MAX_SIZE = 2 * 1024 * 1024  # 2 MB
