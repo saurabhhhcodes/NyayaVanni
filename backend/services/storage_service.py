@@ -50,6 +50,8 @@ def init_db(raise_on_error: bool = False):
             cursor.execute("ALTER TABLE documents ADD COLUMN session_id TEXT")
         if "user_id" not in existing_columns:
             cursor.execute("ALTER TABLE documents ADD COLUMN user_id TEXT")
+        if "tags" not in existing_columns:
+            cursor.execute("ALTER TABLE documents ADD COLUMN tags TEXT DEFAULT ''")
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_documents_session_id
             ON documents(session_id)
@@ -404,6 +406,31 @@ def save_document_record(session_id: str, doc_id: str, filename: str, local_path
             conn.close()
 
 
+INTERNAL_DOC_FIELDS = {"session_id", "user_id", "local_path", "status"}
+
+ALLOWED_DOCUMENT_TAGS = frozenset({
+    "contract", "nda", "terms_of_service", "privacy_policy",
+    "employment", "lease", "agreement", "notice", "legal_notice",
+    "court_order", "affidavit", "will", "deed", "invoice",
+    "gst", "tax", "banking", "insurance", "property",
+})
+
+
+def validate_document_tags(tags: list[str]) -> list[str]:
+    """Validate and sanitize document tags against the allowed list."""
+    sanitized = []
+    for tag in tags:
+        cleaned = re.sub(r'[^a-zA-Z0-9_]', '', tag).strip().lower()
+        if cleaned in ALLOWED_DOCUMENT_TAGS:
+            sanitized.append(cleaned)
+    return sanitized
+
+
+def strip_internal_metadata(record: dict) -> dict:
+    """Remove internal metadata fields from a document record for export."""
+    return {k: v for k, v in record.items() if k not in INTERNAL_DOC_FIELDS}
+
+
 def get_document_record(doc_id: str) -> Optional[dict]:
     """Retrieve document metadata from SQLite"""
     conn = None
@@ -422,6 +449,47 @@ def get_document_record(doc_id: str) -> Optional[dict]:
     finally:
         if conn:
             conn.close()
+
+
+def get_document_tags(doc_id: str) -> list[str]:
+    """Return the tags for a document as a list."""
+    record = get_document_record(doc_id)
+    if not record:
+        return []
+    tags_str = record.get("tags") or ""
+    return [t for t in tags_str.split(",") if t]
+
+
+def set_document_tags(doc_id: str, tags: list[str]) -> bool:
+    """Set validated tags on a document. Returns True on success."""
+    validated = validate_document_tags(tags)
+    tags_str = ",".join(validated)
+    conn = None
+    try:
+        conn = _connect_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE documents SET tags = ? WHERE document_id = ?",
+            (tags_str, doc_id),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Failed to set tags for document {doc_id}: {e}")
+        if conn:
+            conn.rollback()
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
+def export_document_record(doc_id: str) -> Optional[dict]:
+    """Retrieve document metadata with internal fields stripped for export."""
+    record = get_document_record(doc_id)
+    if not record:
+        return None
+    return strip_internal_metadata(record)
 
 
 def delete_document_and_cache(doc_id: str, session_id: Optional[str] = None) -> bool:

@@ -85,13 +85,17 @@ from ..services.storage_service import (
     DB_PATH as STORAGE_DB_PATH,
     QUARANTINE_DIR,
     UPLOAD_DIR,
+    ALLOWED_DOCUMENT_TAGS,
     create_session_id,
     delete_document_and_cache,
     delete_document_history,
+    export_document_record,
     get_cached_analysis,
     get_document_record,
+    get_document_tags,
     save_cached_analysis,
     save_document_record,
+    set_document_tags,
     update_session_ip,
     upload_to_local,
     validate_session,
@@ -396,6 +400,10 @@ async def register(request: Request, body: RegisterRequest):
     if not user:
         raise HTTPException(status_code=409, detail="Email already registered")
     update_session_user_id(session_id, user["user_id"])
+
+    from ..services.search_service import index_user_profile
+    index_user_profile(user["user_id"], user.get("display_name", ""), user.get("email", ""))
+
     verification_token = user.pop("verification_token", None)
     if verification_token:
         send_verification_email(user["email"], verification_token)
@@ -567,6 +575,50 @@ async def get_current_user(request: Request):
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
     return user
+
+
+@api_router.patch("/auth/profile")
+@limiter.limit("5/minute")
+async def update_profile(request: Request, body: UpdateProfileRequest):
+    """Update the authenticated user's profile.
+
+    Currently supports updating display_name. Updates the search index
+    to reflect the new display name.
+    """
+    session_id = require_session_id(request)
+    user_id = get_session_user_id(session_id)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+
+    safe_name = sanitize_text(body.display_name).strip()
+    if len(safe_name) > 200:
+        safe_name = safe_name[:200]
+
+    user = get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    from ..services.auth_service import update_user_profile as _update_user_profile
+
+    updated = _update_user_profile(user_id, display_name=safe_name)
+    if not updated:
+        raise HTTPException(status_code=500, detail="Failed to update profile")
+
+    from ..services.search_service import index_user_profile
+
+    index_user_profile(user_id, safe_name, user.get("email", ""))
+
+    log_action(
+        STORAGE_DB_PATH,
+        "profile_update",
+        "user",
+        user_id,
+        session_id,
+        {"display_name": safe_name},
+        request.client.host if request.client else None,
+    )
+
+    return {"status": "ok", "display_name": safe_name}
 
 
 @api_router.get("/admin/users")
@@ -1790,6 +1842,90 @@ async def delete_document(document_id: str, request: Request):
     )
 
     return {"documentId": document_id, "deleted": True}
+
+
+class DocumentExportResponse(BaseModel):
+    document_id: str
+    filename: str
+    tags: list[str]
+    uploaded_at: str
+    analysis: dict
+
+
+class DocumentTagsRequest(BaseModel):
+    tags: list[str] = Field(..., max_length=20)
+
+
+class UpdateProfileRequest(BaseModel):
+    display_name: str = Field("", max_length=200)
+
+
+@api_router.get("/documents/{document_id}/export")
+@limiter.limit("10/minute")
+async def export_document(document_id: str, request: Request):
+    """Export document data with internal metadata stripped.
+
+    Returns document metadata and analysis results, excluding internal
+    fields (session_id, user_id, local_path, status).
+    """
+    session_id = require_session_id(request)
+    record = require_document_owner(document_id, session_id)
+
+    exported = export_document_record(document_id)
+    if not exported:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    cached = get_cached_analysis(document_id, session_id, "en")
+    analysis_data = cached.get("analysis", {}) if cached else {}
+
+    return {
+        "document_id": exported.get("document_id"),
+        "filename": exported.get("filename"),
+        "tags": get_document_tags(document_id),
+        "uploaded_at": exported.get("uploaded_at"),
+        "analysis": analysis_data,
+    }
+
+
+@api_router.get("/documents/{document_id}/tags")
+@limiter.limit("30/minute")
+async def get_document_tags_endpoint(document_id: str, request: Request):
+    """Get tags for a document."""
+    session_id = require_session_id(request)
+    require_document_owner(document_id, session_id)
+    tags = get_document_tags(document_id)
+    return {"document_id": document_id, "tags": tags}
+
+
+@api_router.patch("/documents/{document_id}/tags")
+@limiter.limit("10/minute")
+async def update_document_tags(
+    document_id: str, request: Request, body: DocumentTagsRequest
+):
+    """Update tags for a document with validation against allowed list.
+
+    Invalid tags are silently dropped. Returns the final tag set.
+    """
+    session_id = require_session_id(request)
+    require_document_owner(document_id, session_id)
+
+    success = set_document_tags(document_id, body.tags)
+    if not success:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    tags = get_document_tags(document_id)
+
+    log_action(
+        STORAGE_DB_PATH,
+        "document_tags_update",
+        "document",
+        document_id,
+        session_id,
+        {"tags": tags},
+        request.client.host if request.client else None,
+    )
+
+    return {"document_id": document_id, "tags": tags}
 
 
 class ShareDocumentRequest(BaseModel):

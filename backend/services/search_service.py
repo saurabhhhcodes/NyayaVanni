@@ -85,6 +85,16 @@ def _create_fts_index():
             )
         """)
 
+        # Create FTS5 virtual table for user profile indexing
+        cursor.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS users_fts USING fts5(
+                user_id,
+                display_name,
+                email,
+                tokenize = 'porter ascii'
+            )
+        """)
+
         # Create search cache table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS search_cache (
@@ -388,6 +398,35 @@ def clear_expired_cache():
             logger.info(f"Cleaned up {deleted} expired cache entries")
     except Exception as e:
         logger.error(f"Failed to clear expired cache: {e}")
+
+
+def index_user_profile(user_id: str, display_name: str, email: str):
+    """Index or update a user profile in the full-text search index."""
+    if not DB_PATH:
+        logger.error("DB_PATH not set. Call init_search_service first.")
+        return
+
+    try:
+        conn = _connect_db()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "DELETE FROM users_fts WHERE user_id = ?", (user_id,)
+        )
+
+        cursor.execute(
+            """
+            INSERT INTO users_fts (user_id, display_name, email)
+            VALUES (?, ?, ?)
+        """,
+            (user_id, display_name, email),
+        )
+
+        conn.commit()
+        conn.close()
+        logger.info(f"User profile {user_id} indexed successfully")
+    except Exception as e:
+        logger.error(f"Failed to index user profile {user_id}: {e}")
 
 
 def remove_document_from_index(document_id: str):

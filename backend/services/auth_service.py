@@ -6,6 +6,8 @@ import secrets
 import smtplib
 import sqlite3
 import threading
+import time
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from email.mime.text import MIMEText
 from typing import Any, Optional
@@ -15,6 +17,22 @@ import bcrypt
 from .database import connect_db
 
 STORAGE_DB_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "nyayavanni.db")
+
+_email_rate_limit_store = defaultdict(list)
+_EMAIL_RATE_LIMIT_MAX = 5
+_EMAIL_RATE_LIMIT_WINDOW = 3600
+
+
+def _check_email_rate_limit(email: str) -> bool:
+    now = time.time()
+    timestamps = _email_rate_limit_store[email]
+    cutoff = now - _EMAIL_RATE_LIMIT_WINDOW
+    active = [t for t in timestamps if t > cutoff]
+    _email_rate_limit_store[email] = active
+    if len(active) >= _EMAIL_RATE_LIMIT_MAX:
+        return False
+    _email_rate_limit_store[email].append(now)
+    return True
 
 logger = logging.getLogger(__name__)
 
@@ -384,6 +402,29 @@ def get_user_by_id(user_id: str, public: bool = False) -> Optional[dict[str, Any
             conn.close()
 
 
+def update_user_profile(user_id: str, display_name: str = "") -> bool:
+    """Update the user's display name."""
+    conn = None
+    try:
+        conn = connect_db(STORAGE_DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(
+            f"UPDATE {USERS_TABLE} SET display_name = ?, updated_at = ? WHERE user_id = ?",
+            (display_name, datetime.now(timezone.utc).isoformat(), user_id),
+        )
+        conn.commit()
+        _invalidate_user_cache(user_id)
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Failed to update user profile for {user_id}: {e}")
+        if conn:
+            conn.rollback()
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
 def update_avatar_url(user_id: str, avatar_url: str) -> bool:
     conn = None
     try:
@@ -407,7 +448,13 @@ def update_avatar_url(user_id: str, avatar_url: str) -> bool:
 
 
 def send_verification_email(email: str, token: str) -> None:
-    """Send email verification link. Logs to console by default; uses SMTP if configured."""
+    """Send email verification link. Logs to console by default; uses SMTP if configured.
+
+    Rate-limited to 5 emails per hour per user address.
+    """
+    if not _check_email_rate_limit(email):
+        logger.warning("Email rate limit exceeded for %s", email)
+        return
     frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
     verify_url = f"{frontend_url}/verify-email?token={token}"
     subject = "Verify your NyayaVanni account"
