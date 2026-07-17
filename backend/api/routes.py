@@ -22,6 +22,7 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.pdfgen import canvas
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from ..middleware.rate_limit import limiter
 
@@ -51,16 +52,22 @@ from ..services.search_service import (
     search_documents,
 )
 from ..services.storage_service import (
+    AVATAR_DIR,
     UPLOAD_DIR,
+    ALLOWED_NOTIFICATION_PREFERENCES,
     create_session_id,
     delete_document_and_cache,
+    get_avatar_path,
     get_cached_analysis,
     get_document_record,
+    get_notification_preferences,
     invalidate_session,
     mark_password_reset_token_used,
+    save_avatar,
     save_cached_analysis,
     save_document_record,
     store_password_reset_token,
+    update_notification_preferences,
     upload_to_local,
     validate_session,
     verify_password_reset_token,
@@ -89,6 +96,21 @@ ALLOWED_MIME_TYPES = {
     "image/jpeg",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 }
+
+
+def _session_key(request: Request) -> str:
+    return request.cookies.get("session_id", get_remote_address(request))
+
+
+class NotificationPreferencesRequest(BaseModel):
+    email: bool | None = None
+    sms: bool | None = None
+    push: bool | None = None
+    in_app: bool | None = None
+
+
+ALLOWED_AVATAR_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
+MAX_AVATAR_SIZE = 2 * 1024 * 1024
 
 
 class DocumentGenerationRequest(BaseModel):
@@ -250,18 +272,19 @@ async def create_session(request: Request, response: Response):
     Raises:
         HTTPException 429: If the rate limit is exceeded.
     """
-    session_id = request.cookies.get("session_id")
-    if not session_id or not validate_session(session_id):
-        session_id = create_session_id()
-        session_secure = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true"
-        response.set_cookie(
-            key="session_id",
-            value=session_id,
-            httponly=True,
-            samesite="lax",
-            secure=session_secure,
-            max_age=30 * 24 * 60 * 60,  # 30 days
-        )
+    old_session_id = request.cookies.get("session_id")
+    if old_session_id and validate_session(old_session_id):
+        invalidate_session(old_session_id)
+    session_id = create_session_id()
+    session_secure = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true"
+    response.set_cookie(
+        key="session_id",
+        value=session_id,
+        httponly=True,
+        samesite="lax",
+        secure=session_secure,
+        max_age=30 * 24 * 60 * 60,  # 30 days
+    )
     return {"status": "Session active"}
 
 
@@ -288,6 +311,88 @@ async def logout(request: Request, response: Response):
         secure=session_secure,
     )
     return {"status": "Logged out"}
+
+
+@api_router.post("/auth/avatar")
+@limiter.limit("5/minute", key_func=_session_key)
+async def upload_avatar(request: Request, file: UploadFile = File(...)):
+    session_id = require_session_id(request)
+    _log_access(request, "upload-avatar", session_id)
+
+    filename = file.filename or ""
+    ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
+    if ext not in ALLOWED_AVATAR_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported avatar format. Allowed: {', '.join(sorted(ALLOWED_AVATAR_EXTENSIONS))}",
+        )
+
+    raw_bytes = await file.read()
+    if len(raw_bytes) > MAX_AVATAR_SIZE:
+        raise HTTPException(
+            status_code=413, detail="Avatar size exceeds the maximum allowed limit of 2MB."
+        )
+
+    safe_filename = f"{session_id}.{ext}"
+    avatar_path = os.path.normpath(os.path.join(AVATAR_DIR, safe_filename))
+    if not avatar_path.startswith(os.path.normpath(AVATAR_DIR)):
+        raise HTTPException(status_code=400, detail="Invalid file path detected.")
+
+    try:
+        with open(avatar_path, "wb") as buffer:
+            buffer.write(raw_bytes)
+    except Exception as e:
+        if os.path.exists(avatar_path):
+            os.remove(avatar_path)
+        logger.error("Avatar save failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to save avatar.")
+
+    save_avatar(session_id, avatar_path)
+    return {"status": "ok", "message": "Avatar uploaded successfully"}
+
+
+@api_router.get("/auth/avatar")
+async def get_avatar(request: Request):
+    session_id = require_session_id(request)
+    avatar_path = get_avatar_path(session_id)
+    if not avatar_path or not os.path.exists(avatar_path):
+        raise HTTPException(status_code=404, detail="Avatar not found")
+    from fastapi.responses import FileResponse
+    return FileResponse(avatar_path)
+
+
+@api_router.put("/auth/notification-preferences")
+@limiter.limit("10/minute", key_func=_session_key)
+async def set_notification_preferences(request: Request, body: NotificationPreferencesRequest):
+    session_id = require_session_id(request)
+    _log_access(request, "notification-preferences", session_id)
+
+    prefs = body.model_dump(exclude_none=True)
+    if not prefs:
+        raise HTTPException(status_code=400, detail="No preferences provided")
+
+    invalid = set(prefs.keys()) - ALLOWED_NOTIFICATION_PREFERENCES
+    if invalid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid notification preferences: {', '.join(sorted(invalid))}. Allowed: {', '.join(sorted(ALLOWED_NOTIFICATION_PREFERENCES))}",
+        )
+
+    try:
+        update_notification_preferences(session_id, prefs)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return {
+        "status": "ok",
+        "preferences": get_notification_preferences(session_id),
+    }
+
+
+@api_router.get("/auth/notification-preferences")
+async def get_notification_preferences_endpoint(request: Request):
+    session_id = require_session_id(request)
+    return {"preferences": get_notification_preferences(session_id)}
 
 
 PASSWORD_RESET_RATE_LIMIT = os.getenv("PASSWORD_RESET_RATE_LIMIT", "3/hour")
@@ -344,7 +449,7 @@ async def reset_password(request: Request, body: ResetPasswordRequest):
 
 
 @api_router.post("/upload")
-@limiter.limit(UPLOAD_RATE_LIMIT)
+@limiter.limit(UPLOAD_RATE_LIMIT, key_func=_session_key)
 async def upload_document(request: Request, file: UploadFile = File(...)):
     """Upload a legal document and return a document ID.
 

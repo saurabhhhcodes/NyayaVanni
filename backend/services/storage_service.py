@@ -16,6 +16,9 @@ logger = logging.getLogger(__name__)
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "..", "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+AVATAR_DIR = os.path.join(os.path.dirname(__file__), "..", "avatars")
+os.makedirs(AVATAR_DIR, exist_ok=True)
+
 # SQLite Database setup
 DB_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "nyayavanni.db")
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
@@ -54,6 +57,8 @@ def init_db(raise_on_error: bool = False):
 
         _ensure_analysis_cache_table(cursor)
         _ensure_sessions_table(cursor)
+        _ensure_avatars_table(cursor)
+        _ensure_notification_prefs_table(cursor)
 
         conn.commit()
     except Exception as e:
@@ -170,6 +175,26 @@ def _ensure_sessions_table(cursor):
             created_at TEXT NOT NULL,
             expires_at TEXT NOT NULL,
             used INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+
+
+def _ensure_avatars_table(cursor):
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS avatars (
+            session_id TEXT PRIMARY KEY,
+            avatar_path TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+    """)
+
+
+def _ensure_notification_prefs_table(cursor):
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS notification_preferences (
+            session_id TEXT PRIMARY KEY,
+            preferences TEXT NOT NULL DEFAULT '{}',
+            updated_at TEXT NOT NULL
         )
     """)
 
@@ -625,6 +650,106 @@ def get_cached_analysis(doc_id: str, session_id: str, language: str) -> Optional
     except Exception as e:
         logger.error(f"SQLite analysis cache retrieve failed: {e}")
         return None
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_avatar_path(session_id: str) -> str | None:
+    conn = None
+    try:
+        conn = _connect_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT avatar_path FROM avatars WHERE session_id = ?", (session_id,))
+        row = cursor.fetchone()
+        return row[0] if row else None
+    except Exception as e:
+        logger.error(f"Failed to get avatar path: {e}")
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
+def save_avatar(session_id: str, avatar_path: str) -> str | None:
+    old_path = get_avatar_path(session_id)
+    if old_path and old_path != avatar_path and os.path.exists(old_path):
+        try:
+            os.remove(old_path)
+        except OSError as exc:
+            logger.warning("Failed to delete old avatar %s: %s", old_path, exc)
+
+    now = datetime.now(timezone.utc).isoformat()
+    conn = None
+    try:
+        conn = _connect_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT OR REPLACE INTO avatars (session_id, avatar_path, updated_at) VALUES (?, ?, ?)",
+            (session_id, avatar_path, now),
+        )
+        conn.commit()
+        return old_path
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error(f"Failed to save avatar: {e}")
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_notification_preferences(session_id: str) -> dict:
+    conn = None
+    try:
+        conn = _connect_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT preferences FROM notification_preferences WHERE session_id = ?", (session_id,))
+        row = cursor.fetchone()
+        if row:
+            return json.loads(row[0])
+        return {}
+    except Exception as e:
+        logger.error(f"Failed to get notification preferences: {e}")
+        return {}
+    finally:
+        if conn:
+            conn.close()
+
+
+ALLOWED_NOTIFICATION_PREFERENCES = {"email", "sms", "push", "in_app"}
+
+
+def update_notification_preferences(session_id: str, preferences: dict) -> bool:
+    invalid = set(preferences.keys()) - ALLOWED_NOTIFICATION_PREFERENCES
+    if invalid:
+        raise ValueError(f"Invalid notification preferences: {', '.join(sorted(invalid))}")
+
+    for key, value in preferences.items():
+        if not isinstance(value, bool):
+            raise ValueError(f"Notification preference '{key}' must be a boolean")
+
+    now = datetime.now(timezone.utc).isoformat()
+    conn = None
+    try:
+        conn = _connect_db()
+        cursor = conn.cursor()
+        existing = get_notification_preferences(session_id)
+        existing.update(preferences)
+        cursor.execute(
+            "INSERT OR REPLACE INTO notification_preferences (session_id, preferences, updated_at) VALUES (?, ?, ?)",
+            (session_id, json.dumps(existing), now),
+        )
+        conn.commit()
+        return True
+    except ValueError:
+        raise
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error(f"Failed to update notification preferences: {e}")
+        return False
     finally:
         if conn:
             conn.close()
