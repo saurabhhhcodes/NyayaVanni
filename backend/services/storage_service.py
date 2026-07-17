@@ -52,6 +52,8 @@ def init_db(raise_on_error: bool = False):
             cursor.execute("ALTER TABLE documents ADD COLUMN user_id TEXT")
         if "tags" not in existing_columns:
             cursor.execute("ALTER TABLE documents ADD COLUMN tags TEXT DEFAULT ''")
+        if "description" not in existing_columns:
+            cursor.execute("ALTER TABLE documents ADD COLUMN description TEXT DEFAULT ''")
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_documents_session_id
             ON documents(session_id)

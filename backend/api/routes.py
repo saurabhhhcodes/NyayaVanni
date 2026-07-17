@@ -232,6 +232,7 @@ async def read_upload_with_size_limit(file: UploadFile, max_size: int) -> bytes:
 
 class DocumentUpdateRequest(BaseModel):
     filename: str = Field(..., min_length=1, max_length=255)
+    description: str = Field("", max_length=2000)
 
 
 class DocumentGenerationRequest(BaseModel):
@@ -483,6 +484,48 @@ async def change_password_endpoint(request: Request, body: ChangePasswordRequest
     return {"status": "ok", "message": message}
 
 
+@api_router.post("/auth/logout")
+@limiter.limit("10/minute")
+async def logout(request: Request):
+    """Log out by clearing ALL active sessions for the authenticated user.
+
+    Invalidates every session associated with the user's account,
+    not just the current one.
+    """
+    session_id = require_session_id(request)
+    user_id = get_session_user_id(session_id)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+
+    conn = None
+    try:
+        from ..services.storage_service import _connect_db
+        conn = _connect_db()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+        deleted = cursor.rowcount
+        conn.commit()
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error("Logout failed for user %s: %s", user_id, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Logout failed")
+    finally:
+        if conn:
+            conn.close()
+
+    log_action(
+        STORAGE_DB_PATH,
+        "user_logout",
+        "user",
+        user_id,
+        session_id,
+        {"sessions_cleared": deleted},
+        request.client.host if request.client else None,
+    )
+    return {"status": "ok", "message": "Logged out successfully", "sessions_cleared": deleted}
+
+
 class ForgotPasswordRequest(BaseModel):
     email: str = Field(..., max_length=320)
 
@@ -575,6 +618,10 @@ async def get_current_user(request: Request):
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
     return user
+
+
+class UpdateProfileRequest(BaseModel):
+    display_name: str = Field("", max_length=200)
 
 
 @api_router.patch("/auth/profile")
@@ -1768,14 +1815,18 @@ async def update_document(document_id: str, request: Request, body: DocumentUpda
     if not safe_filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
 
+    safe_description = sanitize_text(body.description).strip()
+    if len(safe_description) > 2000:
+        safe_description = safe_description[:2000]
+
     conn = None
     try:
         from ..services.storage_service import _connect_db
         conn = _connect_db()
         cursor = conn.cursor()
         cursor.execute(
-            "UPDATE documents SET filename = ? WHERE document_id = ?",
-            (safe_filename, document_id),
+            "UPDATE documents SET filename = ?, description = ? WHERE document_id = ?",
+            (safe_filename, safe_description, document_id),
         )
         conn.commit()
         if cursor.rowcount == 0:
@@ -1797,11 +1848,11 @@ async def update_document(document_id: str, request: Request, body: DocumentUpda
         "document",
         document_id,
         session_id,
-        {"filename": safe_filename},
+        {"filename": safe_filename, "description": safe_description},
         request.client.host if request.client else None,
     )
 
-    return {"documentId": document_id, "filename": safe_filename, "updated": True}
+    return {"documentId": document_id, "filename": safe_filename, "description": safe_description, "updated": True}
 
 
 @api_router.delete("/documents/{document_id}")
@@ -1847,6 +1898,7 @@ async def delete_document(document_id: str, request: Request):
 class DocumentExportResponse(BaseModel):
     document_id: str
     filename: str
+    description: str
     tags: list[str]
     uploaded_at: str
     analysis: dict
@@ -1854,10 +1906,6 @@ class DocumentExportResponse(BaseModel):
 
 class DocumentTagsRequest(BaseModel):
     tags: list[str] = Field(..., max_length=20)
-
-
-class UpdateProfileRequest(BaseModel):
-    display_name: str = Field("", max_length=200)
 
 
 @api_router.get("/documents/{document_id}/export")
@@ -1994,6 +2042,7 @@ async def share_document(
 
 class BulkDeleteRequest(BaseModel):
     confirm: bool = Field(..., description="Must be true to confirm bulk deletion")
+    model_config = {"extra": "forbid"}
 
 
 @api_router.delete("/documents/history")

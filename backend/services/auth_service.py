@@ -294,6 +294,9 @@ def change_password(
             if not _verify_password(current_password, user["password_hash"]):
                 return False, "Current password is incorrect"
 
+            if _verify_password(new_password, user["password_hash"]):
+                return False, "New password must be different from the current password"
+
             new_hash = _hash_password(new_password)
             now_iso = datetime.now(timezone.utc).isoformat()
             cursor.execute(
