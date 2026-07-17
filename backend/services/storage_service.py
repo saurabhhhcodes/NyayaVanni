@@ -52,6 +52,8 @@ def init_db(raise_on_error: bool = False):
             cursor.execute("ALTER TABLE documents ADD COLUMN session_id TEXT")
         if "user_id" not in existing_columns:
             cursor.execute("ALTER TABLE documents ADD COLUMN user_id TEXT")
+        if "category" not in existing_columns:
+            cursor.execute("ALTER TABLE documents ADD COLUMN category TEXT DEFAULT 'general'")
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_documents_session_id
             ON documents(session_id)
@@ -508,6 +510,48 @@ def delete_document_and_cache(doc_id: str) -> bool:
             conn.close()
 
 
+def soft_delete_document(doc_id: str) -> bool:
+    conn = None
+    try:
+        conn = _connect_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE documents SET status = 'deleted' WHERE document_id = ?",
+            (doc_id,),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error(f"Failed to soft-delete document {doc_id}: {e}")
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
+def restore_document(doc_id: str) -> bool:
+    conn = None
+    try:
+        conn = _connect_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE documents SET status = 'ready' WHERE document_id = ? AND status = 'deleted'",
+            (doc_id,),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error(f"Failed to restore document {doc_id}: {e}")
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
 def delete_document_history(session_id: str) -> int:
     """Delete all documents and their analyses for a specific session ID"""
     conn = None
@@ -759,9 +803,15 @@ ALLOWED_DOCUMENT_TAGS = frozenset({
     "terms", "employment", "property", "financial", "personal",
 })
 ALLOWED_SHARE_PERMISSIONS = {"view", "comment", "edit", "admin"}
+ALLOWED_DOCUMENT_CATEGORIES = frozenset({
+    "general", "legal", "contract", "nda", "agreement",
+    "court", "property", "employment", "financial", "personal",
+})
 
 
-def get_user_documents(session_id: str, page: int = 1, page_size: int = 10) -> dict:
+def get_user_documents(
+    session_id: str, page: int = 1, page_size: int = 10, include_deleted: bool = False
+) -> dict:
     """Return a paginated list of documents for the given session."""
     conn = None
     try:
@@ -769,15 +819,17 @@ def get_user_documents(session_id: str, page: int = 1, page_size: int = 10) -> d
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
+        status_filter = "" if include_deleted else "AND (status IS NULL OR status != 'deleted')"
+
         cursor.execute(
-            "SELECT COUNT(*) FROM documents WHERE session_id = ?",
+            f"SELECT COUNT(*) FROM documents WHERE session_id = ? {status_filter}",
             (session_id,),
         )
         total_count = cursor.fetchone()[0]
 
         offset = (page - 1) * page_size
         cursor.execute(
-            "SELECT document_id, filename, status, uploaded_at, tags, description FROM documents WHERE session_id = ? ORDER BY uploaded_at DESC LIMIT ? OFFSET ?",
+            f"SELECT document_id, filename, status, uploaded_at, tags, description, category FROM documents WHERE session_id = ? {status_filter} ORDER BY uploaded_at DESC LIMIT ? OFFSET ?",
             (session_id, page_size, offset),
         )
         rows = cursor.fetchall()
@@ -872,6 +924,50 @@ def export_document_record(doc_id: str) -> dict | None:
     except Exception as e:
         logger.error(f"Failed to export document {doc_id}: {e}")
         return None
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_document_category(doc_id: str) -> str | None:
+    conn = None
+    try:
+        conn = _connect_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT category FROM documents WHERE document_id = ?", (doc_id,))
+        row = cursor.fetchone()
+        return row[0] if row else None
+    except Exception as e:
+        logger.error(f"Failed to get category for document {doc_id}: {e}")
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
+def set_document_category(doc_id: str, category: str) -> bool:
+    cleaned = category.strip().lower()
+    if cleaned not in ALLOWED_DOCUMENT_CATEGORIES:
+        raise ValueError(
+            f"Invalid category '{category}'. Allowed: {', '.join(sorted(ALLOWED_DOCUMENT_CATEGORIES))}"
+        )
+    conn = None
+    try:
+        conn = _connect_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE documents SET category = ? WHERE document_id = ?",
+            (cleaned, doc_id),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    except ValueError:
+        raise
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error(f"Failed to set category for document {doc_id}: {e}")
+        return False
     finally:
         if conn:
             conn.close()

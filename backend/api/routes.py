@@ -64,6 +64,8 @@ from ..services.storage_service import (
     deactivate_user_sessions,
     delete_document_and_cache,
     export_document_record,
+    restore_document,
+    soft_delete_document,
     generate_api_key,
     get_avatar_path,
     get_cached_analysis,
@@ -80,6 +82,8 @@ from ..services.storage_service import (
     save_cached_analysis,
     save_document_record,
     set_document_tags,
+    set_document_category,
+    get_document_category,
     store_password_reset_token,
     update_notification_preferences,
     update_session_user_id,
@@ -138,6 +142,10 @@ class DocumentGenerationRequest(BaseModel):
 
 class DocumentTagsRequest(BaseModel):
     tags: list[str] = Field(..., max_length=20)
+
+
+class DocumentCategoryRequest(BaseModel):
+    category: str = Field(..., min_length=1, max_length=50)
 
 
 class ShareDocumentRequest(BaseModel):
@@ -1272,6 +1280,37 @@ async def update_document_tags(
     return {"document_id": document_id, "tags": tags}
 
 
+@api_router.get("/documents/{document_id}/category")
+@limiter.limit("30/minute", key_func=_session_key)
+async def get_document_category_endpoint(document_id: str, request: Request):
+    """Get the category for a document."""
+    session_id = require_session_id(request)
+    require_document_owner(document_id, session_id)
+    category = get_document_category(document_id)
+    return {"document_id": document_id, "category": category or "general"}
+
+
+@api_router.patch("/documents/{document_id}/category")
+@limiter.limit("10/minute", key_func=_session_key)
+async def update_document_category(
+    document_id: str, request: Request, body: DocumentCategoryRequest
+):
+    """Update the category for a document with validation against allowed list."""
+    session_id = require_session_id(request)
+    require_document_owner(document_id, session_id)
+
+    try:
+        success = set_document_category(document_id, body.category)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if not success:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    category = get_document_category(document_id)
+    return {"document_id": document_id, "category": category}
+
+
 @api_router.post("/documents/{document_id}/share")
 @limiter.limit("10/minute", key_func=_session_key)
 async def share_document(
@@ -1333,10 +1372,13 @@ async def bulk_delete_documents(request: Request, body: BulkDeleteRequest):
         except ValueError:
             pass
 
+    total = len(body.document_ids)
     deleted_ids = []
+    forbidden_ids = []
     not_found_ids = []
+    errors = []
 
-    for doc_id in body.document_ids:
+    for idx, doc_id in enumerate(body.document_ids):
         try:
             require_document_owner(doc_id, session_id)
             deleted = delete_document_and_cache(doc_id)
@@ -1345,14 +1387,24 @@ async def bulk_delete_documents(request: Request, body: BulkDeleteRequest):
                 deleted_ids.append(doc_id)
             else:
                 not_found_ids.append(doc_id)
-        except HTTPException:
-            not_found_ids.append(doc_id)
+        except HTTPException as e:
+            if e.status_code == 403:
+                forbidden_ids.append(doc_id)
+            else:
+                not_found_ids.append(doc_id)
+        except Exception as e:
+            errors.append({"document_id": doc_id, "error": str(e)[:200]})
 
     return {
         "status": "ok",
+        "total": total,
+        "processed": len(deleted_ids) + len(not_found_ids) + len(forbidden_ids),
+        "progress_percentage": round((total - len(errors)) / total * 100, 1) if total else 100,
         "deleted_count": len(deleted_ids),
         "deleted_ids": deleted_ids,
+        "forbidden_ids": forbidden_ids,
         "not_found_ids": not_found_ids,
+        "errors": errors,
     }
 
 
@@ -1396,6 +1448,40 @@ async def export_document(
             media_type="text/csv",
             headers={"Content-Disposition": f'attachment; filename="{document_id}.csv"'},
         )
+
+
+@api_router.get("/documents/trash")
+@limiter.limit("10/minute", key_func=_session_key)
+async def list_trashed_documents(request: Request, page: int = 1, page_size: int = 10):
+    """List soft-deleted documents for the current session."""
+    session_id = require_session_id(request)
+    _log_access(request, "list-trash", session_id)
+
+    if page < 1:
+        page = 1
+    if page_size < 1 or page_size > 100:
+        page_size = 10
+
+    result = get_user_documents(session_id, page=page, page_size=page_size, include_deleted=True)
+    return result
+
+
+@api_router.post("/documents/{document_id}/restore")
+@limiter.limit("5/minute", key_func=_session_key)
+async def restore_document_endpoint(document_id: str, request: Request):
+    """Restore a soft-deleted document. Requires ownership."""
+    session_id = require_session_id(request)
+    require_document_owner(document_id, session_id)
+    _log_access(request, "restore-document", session_id, f"doc={document_id}")
+
+    restored = restore_document(document_id)
+    if not restored:
+        raise HTTPException(
+            status_code=404,
+            detail="Document not found or is not in a deleted state",
+        )
+
+    return {"document_id": document_id, "status": "restored"}
 
 
 @api_router.get("/auth/api-keys")

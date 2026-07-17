@@ -510,7 +510,7 @@ def init_password_reset_tokens_table() -> None:
             CREATE TABLE IF NOT EXISTS {PASSWORD_RESET_TOKENS_TABLE} (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id TEXT NOT NULL,
-                token TEXT NOT NULL UNIQUE,
+                token_hash TEXT NOT NULL UNIQUE,
                 expires_at TEXT NOT NULL,
                 used INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
@@ -545,12 +545,13 @@ def request_password_reset(email: str) -> Optional[str]:
 
         user_id = row[0]
         token = secrets.token_urlsafe(48)
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
         now = datetime.now(timezone.utc)
         expires_at = now + timedelta(hours=1)
 
         cursor.execute(
-            f"INSERT INTO {PASSWORD_RESET_TOKENS_TABLE} (user_id, token, expires_at, created_at) VALUES (?, ?, ?, ?)",
-            (user_id, token, expires_at.isoformat(), now.isoformat()),
+            f"INSERT INTO {PASSWORD_RESET_TOKENS_TABLE} (user_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?)",
+            (user_id, token_hash, expires_at.isoformat(), now.isoformat()),
         )
         conn.commit()
         return token
@@ -567,11 +568,12 @@ def request_password_reset(email: str) -> Optional[str]:
 def reset_password_with_token(token: str, new_password: str) -> tuple[bool, str]:
     conn = None
     try:
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
         conn = connect_db(STORAGE_DB_PATH)
         cursor = conn.cursor()
         cursor.execute(
-            f"SELECT id, user_id, expires_at FROM {PASSWORD_RESET_TOKENS_TABLE} WHERE token = ? AND used = 0",
-            (token,),
+            f"SELECT id, user_id, expires_at FROM {PASSWORD_RESET_TOKENS_TABLE} WHERE token_hash = ? AND used = 0",
+            (token_hash,),
         )
         row = cursor.fetchone()
         if not row:
