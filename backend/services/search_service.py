@@ -32,9 +32,10 @@ def _sanitize_fts_query(query: str) -> str:
 
 
 _INJECTION_PATTERNS = re.compile(
-    r"(?i)(\b|\$)(where|ne|eq|gt|gte|lt|lte|in|nin|regex|exists|type|text|search|"
+    r"(?i)\b(?:where|ne|eq|gt|gte|lt|lte|in|nin|regex|exists|type|text|search|"
     r"match|not|nor|or|and|all|elemMatch|mod|geoNear|near|"
-    r"select|union|drop|delete|insert|exec|eval|sleep|\$\$|\$func)",
+    r"select|union|drop|delete|insert|exec|eval|sleep)\b|"
+    r"\$\$|\$func",
 )
 
 
