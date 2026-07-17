@@ -1,8 +1,12 @@
+from __future__ import annotations
+
 import asyncio
+import hashlib
 import io
 import json
 import logging
 import os
+import secrets
 import uuid
 
 import google.generativeai as genai
@@ -16,12 +20,13 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.pdfgen import canvas
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from ..middleware.rate_limit import limiter
 
@@ -29,6 +34,7 @@ from ..config.rate_limits import (
     CONTACT_RATE_LIMIT,
     DELETE_RATE_LIMIT,
     LOGIN_RATE_LIMIT,
+    PASSWORD_RESET_RATE_LIMIT,
     UPLOAD_RATE_LIMIT,
 )
 from ..models.schemas import ChatRequest, ChatResponse, ContactRequest, ForgotPasswordRequest, ResetPasswordRequest
@@ -51,16 +57,36 @@ from ..services.search_service import (
     search_documents,
 )
 from ..services.storage_service import (
+    AVATAR_DIR,
     UPLOAD_DIR,
+    ALLOWED_NOTIFICATION_PREFERENCES,
     create_session_id,
+    deactivate_user_sessions,
     delete_document_and_cache,
+    export_document_record,
+    restore_document,
+    soft_delete_document,
+    generate_api_key,
+    get_avatar_path,
     get_cached_analysis,
     get_document_record,
+    get_document_tags,
+    get_notification_preferences,
+    get_session_user_id,
+    get_user_documents,
     invalidate_session,
+    list_api_keys,
     mark_password_reset_token_used,
+    revoke_api_key,
+    save_avatar,
     save_cached_analysis,
     save_document_record,
+    set_document_tags,
+    set_document_category,
+    get_document_category,
     store_password_reset_token,
+    update_notification_preferences,
+    update_session_user_id,
     upload_to_local,
     validate_session,
     verify_password_reset_token,
@@ -91,12 +117,86 @@ ALLOWED_MIME_TYPES = {
 }
 
 
+def _session_key(request: Request) -> str:
+    return request.cookies.get("session_id", get_remote_address(request))
+
+
+class NotificationPreferencesRequest(BaseModel):
+    email: bool | None = None
+    sms: bool | None = None
+    push: bool | None = None
+    in_app: bool | None = None
+
+
+ALLOWED_AVATAR_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
+MAX_AVATAR_SIZE = 2 * 1024 * 1024
+
+
 class DocumentGenerationRequest(BaseModel):
     effective_date: str = Field(..., max_length=100)
     party_one_name: str = Field(..., max_length=500)
     party_two_name: str = Field(..., max_length=500)
     consideration_amount: str = Field(..., max_length=500)
     jurisdiction: str = Field(..., max_length=200)
+
+
+class DocumentTagsRequest(BaseModel):
+    tags: list[str] = Field(..., max_length=20)
+
+
+class DocumentCategoryRequest(BaseModel):
+    category: str = Field(..., min_length=1, max_length=50)
+
+
+class ShareDocumentRequest(BaseModel):
+    recipient_email: str = Field(
+        ...,
+        max_length=320,
+        pattern=r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$",
+    )
+    message: str = Field("", max_length=1000)
+    expiry_hours: int = Field(default=24, ge=1, le=168)
+    permissions: list[str] = Field(default=["view"], max_length=10)
+
+    @field_validator("permissions")
+    @classmethod
+    def validate_permissions(cls, v: list[str]) -> list[str]:
+        from ..services.storage_service import ALLOWED_SHARE_PERMISSIONS
+        invalid = set(v) - ALLOWED_SHARE_PERMISSIONS
+        if invalid:
+            raise ValueError(
+                f"Invalid sharing permissions: {', '.join(sorted(invalid))}. "
+                f"Allowed: {', '.join(sorted(ALLOWED_SHARE_PERMISSIONS))}"
+            )
+        return list(dict.fromkeys(v))
+
+
+BULK_DELETE_MAX_BODY_SIZE = 1024 * 1024  # 1MB
+
+
+class BulkDeleteRequest(BaseModel):
+    document_ids: list[str] = Field(..., max_length=1000)
+
+
+ALLOWED_EXPORT_FORMATS = frozenset({"json", "csv"})
+
+
+class ExportDocumentRequest(BaseModel):
+    format: str = Field(default="json", max_length=10)
+
+    @field_validator("format")
+    @classmethod
+    def validate_format(cls, v: str) -> str:
+        if v not in ALLOWED_EXPORT_FORMATS:
+            raise ValueError(
+                f"Unsupported export format '{v}'. Allowed: {', '.join(sorted(ALLOWED_EXPORT_FORMATS))}"
+            )
+        return v
+
+
+class ApiKeyCreateRequest(BaseModel):
+    name: str = Field(default="default", max_length=100)
+    scopes: str = Field(default="read", max_length=100)
 
 
 def require_session_id(request: Request) -> str:
@@ -250,18 +350,19 @@ async def create_session(request: Request, response: Response):
     Raises:
         HTTPException 429: If the rate limit is exceeded.
     """
-    session_id = request.cookies.get("session_id")
-    if not session_id or not validate_session(session_id):
-        session_id = create_session_id()
-        session_secure = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true"
-        response.set_cookie(
-            key="session_id",
-            value=session_id,
-            httponly=True,
-            samesite="lax",
-            secure=session_secure,
-            max_age=30 * 24 * 60 * 60,  # 30 days
-        )
+    old_session_id = request.cookies.get("session_id")
+    if old_session_id and validate_session(old_session_id):
+        invalidate_session(old_session_id)
+    session_id = create_session_id()
+    session_secure = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true"
+    response.set_cookie(
+        key="session_id",
+        value=session_id,
+        httponly=True,
+        samesite="lax",
+        secure=session_secure,
+        max_age=30 * 24 * 60 * 60,  # 30 days
+    )
     return {"status": "Session active"}
 
 
@@ -290,7 +391,86 @@ async def logout(request: Request, response: Response):
     return {"status": "Logged out"}
 
 
-PASSWORD_RESET_RATE_LIMIT = os.getenv("PASSWORD_RESET_RATE_LIMIT", "3/hour")
+@api_router.post("/auth/avatar")
+@limiter.limit("5/minute", key_func=_session_key)
+async def upload_avatar(request: Request, file: UploadFile = File(...)):
+    session_id = require_session_id(request)
+    _log_access(request, "upload-avatar", session_id)
+
+    filename = file.filename or ""
+    ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
+    if ext not in ALLOWED_AVATAR_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported avatar format. Allowed: {', '.join(sorted(ALLOWED_AVATAR_EXTENSIONS))}",
+        )
+
+    raw_bytes = await file.read()
+    if len(raw_bytes) > MAX_AVATAR_SIZE:
+        raise HTTPException(
+            status_code=413, detail="Avatar size exceeds the maximum allowed limit of 2MB."
+        )
+
+    safe_filename = f"{session_id}.{ext}"
+    avatar_path = os.path.normpath(os.path.join(AVATAR_DIR, safe_filename))
+    if not avatar_path.startswith(os.path.normpath(AVATAR_DIR)):
+        raise HTTPException(status_code=400, detail="Invalid file path detected.")
+
+    try:
+        with open(avatar_path, "wb") as buffer:
+            buffer.write(raw_bytes)
+    except Exception as e:
+        if os.path.exists(avatar_path):
+            os.remove(avatar_path)
+        logger.error("Avatar save failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to save avatar.")
+
+    save_avatar(session_id, avatar_path)
+    return {"status": "ok", "message": "Avatar uploaded successfully"}
+
+
+@api_router.get("/auth/avatar")
+async def get_avatar(request: Request):
+    session_id = require_session_id(request)
+    avatar_path = get_avatar_path(session_id)
+    if not avatar_path or not os.path.exists(avatar_path):
+        raise HTTPException(status_code=404, detail="Avatar not found")
+    from fastapi.responses import FileResponse
+    return FileResponse(avatar_path)
+
+
+@api_router.put("/auth/notification-preferences")
+@limiter.limit("10/minute", key_func=_session_key)
+async def set_notification_preferences(request: Request, body: NotificationPreferencesRequest):
+    session_id = require_session_id(request)
+    _log_access(request, "notification-preferences", session_id)
+
+    prefs = body.model_dump(exclude_none=True)
+    if not prefs:
+        raise HTTPException(status_code=400, detail="No preferences provided")
+
+    invalid = set(prefs.keys()) - ALLOWED_NOTIFICATION_PREFERENCES
+    if invalid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid notification preferences: {', '.join(sorted(invalid))}. Allowed: {', '.join(sorted(ALLOWED_NOTIFICATION_PREFERENCES))}",
+        )
+
+    try:
+        update_notification_preferences(session_id, prefs)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return {
+        "status": "ok",
+        "preferences": get_notification_preferences(session_id),
+    }
+
+
+@api_router.get("/auth/notification-preferences")
+async def get_notification_preferences_endpoint(request: Request):
+    session_id = require_session_id(request)
+    return {"preferences": get_notification_preferences(session_id)}
 
 
 @api_router.post("/auth/forgot-password")
@@ -344,7 +524,7 @@ async def reset_password(request: Request, body: ResetPasswordRequest):
 
 
 @api_router.post("/upload")
-@limiter.limit(UPLOAD_RATE_LIMIT)
+@limiter.limit(UPLOAD_RATE_LIMIT, key_func=_session_key)
 async def upload_document(request: Request, file: UploadFile = File(...)):
     """Upload a legal document and return a document ID.
 
@@ -1030,4 +1210,371 @@ def search_documents_endpoint(
     except Exception as e:
         logger.error(f"Search failed: {e}")
         raise HTTPException(status_code=500, detail="Search operation failed")
+
+
+@api_router.get("/documents")
+@limiter.limit("30/minute", key_func=_session_key)
+async def list_documents(
+    request: Request,
+    page: int = 1,
+    page_size: int = 10,
+):
+    """List documents for the current session with pagination.
+
+    Query Parameters:
+    - page: Page number (default: 1)
+    - page_size: Results per page (default: 10, max: 100)
+
+    Returns:
+        - results: List of documents
+        - total_count: Total documents
+        - page: Current page
+        - page_size: Results per page
+    """
+    try:
+        session_id = require_session_id(request)
+        _log_access(request, "list-documents", session_id)
+
+        if page < 1:
+            page = 1
+        if page_size < 1 or page_size > 100:
+            page_size = 10
+
+        result = get_user_documents(session_id, page=page, page_size=page_size)
+        return result
+
+    except HTTPException as http_err:
+        raise http_err
+    except Exception as e:
+        logger.error(f"List documents failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to list documents")
+
+
+@api_router.get("/documents/{document_id}/tags")
+@limiter.limit("30/minute", key_func=_session_key)
+async def get_document_tags_endpoint(document_id: str, request: Request):
+    """Get tags for a document."""
+    session_id = require_session_id(request)
+    require_document_owner(document_id, session_id)
+    tags = get_document_tags(document_id)
+    return {"document_id": document_id, "tags": tags}
+
+
+@api_router.patch("/documents/{document_id}/tags")
+@limiter.limit("10/minute", key_func=_session_key)
+async def update_document_tags(
+    document_id: str, request: Request, body: DocumentTagsRequest
+):
+    """Update tags for a document with validation against allowed list.
+
+    Invalid tags are silently dropped. Returns the final tag set.
+    """
+    session_id = require_session_id(request)
+    require_document_owner(document_id, session_id)
+
+    success = set_document_tags(document_id, body.tags)
+    if not success:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    tags = get_document_tags(document_id)
+    return {"document_id": document_id, "tags": tags}
+
+
+@api_router.get("/documents/{document_id}/category")
+@limiter.limit("30/minute", key_func=_session_key)
+async def get_document_category_endpoint(document_id: str, request: Request):
+    """Get the category for a document."""
+    session_id = require_session_id(request)
+    require_document_owner(document_id, session_id)
+    category = get_document_category(document_id)
+    return {"document_id": document_id, "category": category or "general"}
+
+
+@api_router.patch("/documents/{document_id}/category")
+@limiter.limit("10/minute", key_func=_session_key)
+async def update_document_category(
+    document_id: str, request: Request, body: DocumentCategoryRequest
+):
+    """Update the category for a document with validation against allowed list."""
+    session_id = require_session_id(request)
+    require_document_owner(document_id, session_id)
+
+    try:
+        success = set_document_category(document_id, body.category)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if not success:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    category = get_document_category(document_id)
+    return {"document_id": document_id, "category": category}
+
+
+@api_router.post("/documents/{document_id}/share")
+@limiter.limit("10/minute", key_func=_session_key)
+async def share_document(
+    document_id: str,
+    request: Request,
+    body: ShareDocumentRequest,
+):
+    """Share a document with a recipient via email with permission validation.
+
+    Validates sharing permissions against allowed values (view, comment, edit, admin).
+    """
+    session_id = require_session_id(request)
+    require_document_owner(document_id, session_id)
+
+    recipient_email = body.recipient_email.strip()
+    if not recipient_email:
+        raise HTTPException(status_code=400, detail="Recipient email is required")
+    if "@" not in recipient_email or "." not in recipient_email:
+        raise HTTPException(status_code=400, detail="Invalid recipient email format")
+
+    share_token = secrets.token_urlsafe(32)
+    share_link = f"{os.getenv('FRONTEND_URL', 'http://localhost:5173')}/shared/{share_token}"
+
+    _log_access(
+        request,
+        "document-share",
+        session_id,
+        f"doc={document_id} recipient={recipient_email} perms={body.permissions}",
+    )
+
+    return {
+        "status": "ok",
+        "share_token": share_token,
+        "share_link": share_link,
+        "recipient_email": recipient_email,
+        "expiry_hours": body.expiry_hours,
+        "permissions": body.permissions,
+    }
+
+
+@api_router.post("/documents/bulk-delete")
+@limiter.limit("5/minute", key_func=_session_key)
+async def bulk_delete_documents(request: Request, body: BulkDeleteRequest):
+    """Delete multiple documents in bulk. Accepts up to 1000 document IDs.
+
+    Body size is limited to 1MB to prevent abuse.
+    """
+    session_id = require_session_id(request)
+    _log_access(request, "bulk-delete", session_id, f"count={len(body.document_ids)}")
+
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > BULK_DELETE_MAX_BODY_SIZE:
+                raise HTTPException(
+                    status_code=413,
+                    detail="Request body exceeds the maximum allowed size for bulk operations.",
+                )
+        except ValueError:
+            pass
+
+    total = len(body.document_ids)
+    deleted_ids = []
+    forbidden_ids = []
+    not_found_ids = []
+    errors = []
+
+    for idx, doc_id in enumerate(body.document_ids):
+        try:
+            require_document_owner(doc_id, session_id)
+            deleted = delete_document_and_cache(doc_id)
+            if deleted:
+                remove_document_from_index(doc_id)
+                deleted_ids.append(doc_id)
+            else:
+                not_found_ids.append(doc_id)
+        except HTTPException as e:
+            if e.status_code == 403:
+                forbidden_ids.append(doc_id)
+            else:
+                not_found_ids.append(doc_id)
+        except Exception as e:
+            errors.append({"document_id": doc_id, "error": str(e)[:200]})
+
+    return {
+        "status": "ok",
+        "total": total,
+        "processed": len(deleted_ids) + len(not_found_ids) + len(forbidden_ids),
+        "progress_percentage": round((total - len(errors)) / total * 100, 1) if total else 100,
+        "deleted_count": len(deleted_ids),
+        "deleted_ids": deleted_ids,
+        "forbidden_ids": forbidden_ids,
+        "not_found_ids": not_found_ids,
+        "errors": errors,
+    }
+
+
+@api_router.get("/documents/{document_id}/export")
+@limiter.limit("10/minute", key_func=_session_key)
+async def export_document(
+    document_id: str,
+    request: Request,
+    export_format: str = "json",
+):
+    """Export a document record in the requested format.
+
+    Validates the export format against the allowed list (json, csv).
+    """
+    session_id = require_session_id(request)
+    require_document_owner(document_id, session_id)
+    _log_access(request, "document-export", session_id, f"doc={document_id} format={export_format}")
+
+    if export_format not in ALLOWED_EXPORT_FORMATS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported export format '{export_format}'. Allowed: {', '.join(sorted(ALLOWED_EXPORT_FORMATS))}",
+        )
+
+    record = export_document_record(document_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if export_format == "json":
+        return record
+    elif export_format == "csv":
+        import csv
+        import io as _io
+        output = _io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=sorted(record.keys()))
+        writer.writeheader()
+        writer.writerow(record)
+        from fastapi.responses import PlainTextResponse
+        return PlainTextResponse(
+            output.getvalue(),
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{document_id}.csv"'},
+        )
+
+
+@api_router.get("/documents/trash")
+@limiter.limit("10/minute", key_func=_session_key)
+async def list_trashed_documents(request: Request, page: int = 1, page_size: int = 10):
+    """List soft-deleted documents for the current session."""
+    session_id = require_session_id(request)
+    _log_access(request, "list-trash", session_id)
+
+    if page < 1:
+        page = 1
+    if page_size < 1 or page_size > 100:
+        page_size = 10
+
+    result = get_user_documents(session_id, page=page, page_size=page_size, include_deleted=True)
+    return result
+
+
+@api_router.post("/documents/{document_id}/restore")
+@limiter.limit("5/minute", key_func=_session_key)
+async def restore_document_endpoint(document_id: str, request: Request):
+    """Restore a soft-deleted document. Requires ownership."""
+    session_id = require_session_id(request)
+    require_document_owner(document_id, session_id)
+    _log_access(request, "restore-document", session_id, f"doc={document_id}")
+
+    restored = restore_document(document_id)
+    if not restored:
+        raise HTTPException(
+            status_code=404,
+            detail="Document not found or is not in a deleted state",
+        )
+
+    return {"document_id": document_id, "status": "restored"}
+
+
+@api_router.get("/auth/api-keys")
+@limiter.limit("10/minute", key_func=_session_key)
+async def list_api_keys_endpoint(request: Request):
+    """List API keys for the current user."""
+    session_id = require_session_id(request)
+    user_id = get_session_user_id(session_id)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    keys = list_api_keys(user_id)
+    return {"api_keys": keys}
+
+
+@api_router.post("/auth/api-keys")
+@limiter.limit("5/minute", key_func=_session_key)
+async def create_api_key(request: Request, body: ApiKeyCreateRequest):
+    """Generate a new API key for the current user.
+
+    Rate limited to 5 requests per minute per session.
+    """
+    session_id = require_session_id(request)
+    user_id = get_session_user_id(session_id)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+
+    result = generate_api_key(user_id, name=body.name.strip(), scopes=body.scopes.strip())
+    if not result:
+        raise HTTPException(status_code=500, detail="Failed to generate API key")
+
+    key_id, raw_key = result
+    _log_access(request, "api-key-create", session_id, f"key={key_id}")
+
+    return {
+        "status": "ok",
+        "key_id": key_id,
+        "api_key": raw_key,
+        "message": "Save this key securely. It will not be shown again.",
+    }
+
+
+@api_router.delete("/auth/api-keys/{key_id}")
+@limiter.limit("10/minute", key_func=_session_key)
+async def delete_api_key(key_id: str, request: Request):
+    """Revoke an API key."""
+    session_id = require_session_id(request)
+    user_id = get_session_user_id(session_id)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+
+    if not revoke_api_key(key_id, user_id):
+        raise HTTPException(status_code=404, detail="API key not found")
+
+    _log_access(request, "api-key-revoke", session_id, f"key={key_id}")
+    return {"status": "ok", "message": "API key revoked"}
+
+
+@api_router.post("/auth/deactivate")
+@limiter.limit("3/hour", key_func=_session_key)
+async def deactivate_account(request: Request):
+    """Deactivate the current user account and invalidate all sessions.
+
+    Sets the user's is_active flag to 0 and deletes all active sessions,
+    forcing logout from all devices.
+    """
+    session_id = require_session_id(request)
+    user_id = get_session_user_id(session_id)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+
+    try:
+        from ..services.auth_service import delete_user_account
+        success, message = delete_user_account(user_id)
+        if not success:
+            raise HTTPException(status_code=500, detail=message)
+    except ImportError:
+        from ..services.storage_service import _connect_db
+        conn = None
+        try:
+            conn = _connect_db()
+            cursor = conn.cursor()
+            cursor.execute("UPDATE users SET is_active = 0 WHERE user_id = ?", (user_id,))
+            deleted_sessions = deactivate_user_sessions(user_id)
+            conn.commit()
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            logger.error(f"Failed to deactivate user {user_id}: {e}")
+            raise HTTPException(status_code=500, detail="Failed to deactivate account")
+        finally:
+            if conn:
+                conn.close()
+
+    _log_access(request, "account-deactivate", session_id, f"user={user_id}")
+    return {"status": "ok", "message": "Account deactivated and all sessions invalidated"}
 
