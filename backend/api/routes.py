@@ -34,6 +34,7 @@ from ..config.rate_limits import (
     CONTACT_RATE_LIMIT,
     DELETE_RATE_LIMIT,
     LOGIN_RATE_LIMIT,
+    PASSWORD_RESET_RATE_LIMIT,
     UPLOAD_RATE_LIMIT,
 )
 from ..models.schemas import ChatRequest, ChatResponse, ContactRequest, ForgotPasswordRequest, ResetPasswordRequest
@@ -62,6 +63,7 @@ from ..services.storage_service import (
     create_session_id,
     deactivate_user_sessions,
     delete_document_and_cache,
+    export_document_record,
     generate_api_key,
     get_avatar_path,
     get_cached_analysis,
@@ -159,6 +161,29 @@ class ShareDocumentRequest(BaseModel):
                 f"Allowed: {', '.join(sorted(ALLOWED_SHARE_PERMISSIONS))}"
             )
         return list(dict.fromkeys(v))
+
+
+BULK_DELETE_MAX_BODY_SIZE = 1024 * 1024  # 1MB
+
+
+class BulkDeleteRequest(BaseModel):
+    document_ids: list[str] = Field(..., max_length=1000)
+
+
+ALLOWED_EXPORT_FORMATS = frozenset({"json", "csv"})
+
+
+class ExportDocumentRequest(BaseModel):
+    format: str = Field(default="json", max_length=10)
+
+    @field_validator("format")
+    @classmethod
+    def validate_format(cls, v: str) -> str:
+        if v not in ALLOWED_EXPORT_FORMATS:
+            raise ValueError(
+                f"Unsupported export format '{v}'. Allowed: {', '.join(sorted(ALLOWED_EXPORT_FORMATS))}"
+            )
+        return v
 
 
 class ApiKeyCreateRequest(BaseModel):
@@ -438,9 +463,6 @@ async def set_notification_preferences(request: Request, body: NotificationPrefe
 async def get_notification_preferences_endpoint(request: Request):
     session_id = require_session_id(request)
     return {"preferences": get_notification_preferences(session_id)}
-
-
-PASSWORD_RESET_RATE_LIMIT = os.getenv("PASSWORD_RESET_RATE_LIMIT", "3/hour")
 
 
 @api_router.post("/auth/forgot-password")
@@ -1288,6 +1310,92 @@ async def share_document(
         "expiry_hours": body.expiry_hours,
         "permissions": body.permissions,
     }
+
+
+@api_router.post("/documents/bulk-delete")
+@limiter.limit("5/minute", key_func=_session_key)
+async def bulk_delete_documents(request: Request, body: BulkDeleteRequest):
+    """Delete multiple documents in bulk. Accepts up to 1000 document IDs.
+
+    Body size is limited to 1MB to prevent abuse.
+    """
+    session_id = require_session_id(request)
+    _log_access(request, "bulk-delete", session_id, f"count={len(body.document_ids)}")
+
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > BULK_DELETE_MAX_BODY_SIZE:
+                raise HTTPException(
+                    status_code=413,
+                    detail="Request body exceeds the maximum allowed size for bulk operations.",
+                )
+        except ValueError:
+            pass
+
+    deleted_ids = []
+    not_found_ids = []
+
+    for doc_id in body.document_ids:
+        try:
+            require_document_owner(doc_id, session_id)
+            deleted = delete_document_and_cache(doc_id)
+            if deleted:
+                remove_document_from_index(doc_id)
+                deleted_ids.append(doc_id)
+            else:
+                not_found_ids.append(doc_id)
+        except HTTPException:
+            not_found_ids.append(doc_id)
+
+    return {
+        "status": "ok",
+        "deleted_count": len(deleted_ids),
+        "deleted_ids": deleted_ids,
+        "not_found_ids": not_found_ids,
+    }
+
+
+@api_router.get("/documents/{document_id}/export")
+@limiter.limit("10/minute", key_func=_session_key)
+async def export_document(
+    document_id: str,
+    request: Request,
+    export_format: str = "json",
+):
+    """Export a document record in the requested format.
+
+    Validates the export format against the allowed list (json, csv).
+    """
+    session_id = require_session_id(request)
+    require_document_owner(document_id, session_id)
+    _log_access(request, "document-export", session_id, f"doc={document_id} format={export_format}")
+
+    if export_format not in ALLOWED_EXPORT_FORMATS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported export format '{export_format}'. Allowed: {', '.join(sorted(ALLOWED_EXPORT_FORMATS))}",
+        )
+
+    record = export_document_record(document_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if export_format == "json":
+        return record
+    elif export_format == "csv":
+        import csv
+        import io as _io
+        output = _io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=sorted(record.keys()))
+        writer.writeheader()
+        writer.writerow(record)
+        from fastapi.responses import PlainTextResponse
+        return PlainTextResponse(
+            output.getvalue(),
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{document_id}.csv"'},
+        )
 
 
 @api_router.get("/auth/api-keys")
