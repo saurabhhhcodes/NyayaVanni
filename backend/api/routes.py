@@ -445,6 +445,9 @@ async def upload_document(request: Request, file: UploadFile = File(...)):
 
 @api_router.post("/analyze/{document_id}")
 @limiter.limit(RATE_LIMIT_ANALYZE)
+import asyncio
+
+@asyncio.timeout(30)
 async def analyze_document(
     request: Request,
     document_id: str,
