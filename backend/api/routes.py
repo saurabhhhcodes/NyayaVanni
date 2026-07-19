@@ -971,7 +971,9 @@ def generate_document(request: Request, payload: DocumentGenerationRequest):
         return StreamingResponse(
             buffer,
             media_type="application/pdf",
-            headers={"Content-Disposition": 'attachment; filename="NDA_Document.pdf"'},
+            headers={"Content-Disposition": 'attachment; sanitized = "".join(c for c in filename if c.isalnum() or c in "._- ")
+    filename = sanitized[:255]
+    NDA_Document.pdf"'},
         )
     except Exception as e:
         logger.error(f"Failed to generate document: {e}")
