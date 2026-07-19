@@ -1,4 +1,4 @@
-﻿import google.generativeai as genai
+import google.generativeai as genai
 import pdfplumber
 from googletrans import Translator
 
