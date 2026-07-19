@@ -1030,7 +1030,13 @@ async def delete_document(
 
 
 @api_router.get("/search")
-def search_documents_endpoint(request: Request, q: str = , filter: str = , page: int = 1, page_size: int = 10):
+from typing import Optional
+
+def search_documents(q: str, sort_by: str = "relevance", page: int = 1, page_size: int = 10):
+    allowed_sort = ["relevance", "date", "title"]
+    if sort_by not in allowed_sort:
+        sort_by = "relevance"
+    _endpoint(request: Request, q: str = , filter: str = , page: int = 1, page_size: int = 10):
     allowed_filters = ['title', 'content', 'tags', 'date']
     if filter and filter not in allowed_filters:
         raise HTTPException(status_code=400, detail=f"Invalid filter. Allowed: {allowed_filters}")
