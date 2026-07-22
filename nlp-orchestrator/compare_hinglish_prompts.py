@@ -112,7 +112,7 @@ async def run_prompt(client, model: str, prompt_template: str, answer: str) -> s
         temperature=0.6,
         max_tokens=512,
     )
-    return resp.choices[0].message.content.strip()
+    return (resp.choices[0].message.content or "").strip()
 
 
 async def main_async(new_prompt: str, model: str) -> int:

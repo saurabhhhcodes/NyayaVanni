@@ -43,7 +43,7 @@ async def legal_section_lookup(citizen_description: str, job_id: str) -> str:
             max_tokens=1024,
         )
 
-        result = response.choices[0].message.content.strip()
+        result = (response.choices[0].message.content or "").strip()
         logger.info(f"[{job_id}] Received legal sections from Groq.")
         return result
 

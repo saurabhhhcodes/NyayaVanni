@@ -252,7 +252,7 @@ async def _call_groq_once(question: str, kanoon_context: str | None = None) -> d
     )
     return {
         "question": question,
-        "answer": response.choices[0].message.content.strip(),
+        "answer": (response.choices[0].message.content or "").strip(),
         "source": "groq",
         "grounded": bool(kanoon_context),
         "error": None,
@@ -285,6 +285,8 @@ async def _call_gemini_once(
     kanoon_context: str | None = None,
 ) -> dict:
     """Single attempt to call Gemini (no retry decorator)."""
+    if not gemini_client:
+        return {"question": question, "answer": "", "source": "gemini", "grounded": False, "error": "Gemini client not initialized"}
     user_prompt = _build_user_prompt(question, kanoon_context)
     full_prompt = (
         f"{LEGAL_SYSTEM_PROMPT}\n\n"

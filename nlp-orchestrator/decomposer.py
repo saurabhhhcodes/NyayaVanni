@@ -38,7 +38,7 @@ async def decompose_query(query: str) -> list[str]:
             max_tokens=512,
         )
 
-        raw_output = response.choices[0].message.content.strip()
+        raw_output = (response.choices[0].message.content or "").strip()
 
         # Try to parse JSON
         sub_questions = json.loads(raw_output)

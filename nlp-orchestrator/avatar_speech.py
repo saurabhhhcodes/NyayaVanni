@@ -238,7 +238,7 @@ async def convert_to_hinglish(markdown_answer: str) -> str:
             temperature=0.6,
             max_tokens=512,
         )
-        return response.choices[0].message.content.strip()
+        return (response.choices[0].message.content or "").strip()
 
     except Exception as e:
         print(f"[AvatarSpeech] Hinglish conversion error: {e}")

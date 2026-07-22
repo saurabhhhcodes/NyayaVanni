@@ -107,7 +107,7 @@ async def synthesize_answers(original_query: str, research_results: list[dict]) 
             max_tokens=2048,
         )
 
-        return response.choices[0].message.content.strip()
+        return (response.choices[0].message.content or "").strip()
 
     except Exception as e:
         print(f"[Synthesizer] Error: {e}")
@@ -228,7 +228,7 @@ async def synthesize_answers_structured(
             temperature=0.3,
             max_tokens=2048,
         )
-        raw = response.choices[0].message.content.strip()
+        raw = (response.choices[0].message.content or "").strip()
         payload = json.loads(_strip_json_fence(raw), strict=False)
 
         if not isinstance(payload, dict):
